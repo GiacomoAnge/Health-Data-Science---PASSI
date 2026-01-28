@@ -9,6 +9,4 @@ Team: Giacomo Angeletti, Edoardo Crapanzano, Vlad Adrian Dumitru, Francesco Zago
 
 © 2025 – All rights reserved
 
-*What is PASSI?*\\
-PASSI (Progress by Local Health Units Toward a Healthier Italy) is a national public health surveillance system managed by the Italian National Institute of Health (Istituto Superiore di Sanità). It collects continuous survey data on lifestyle behaviors, health conditions, and preventive practices of the adult population in Italy.
-Due to privacy and data protection regulations, the dataset is not publicly available and therefore cannot be shared in this repository.
+*What is PASSI?* **PASSI (Progress by Local Health Units Toward a Healthier Italy)** is a national public health surveillance system managed by the Italian National Institute of Health (Istituto Superiore di Sanità). It collects continuous survey data on lifestyle behaviors, health conditions, and preventive practices of the adult population in Italy. Due to privacy and data protection regulations, the dataset is not publicly available and therefore cannot be shared in this repository.
