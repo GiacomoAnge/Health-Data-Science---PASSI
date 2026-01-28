@@ -1,0 +1,1956 @@
+---
+title: | 
+  <center> [EM1413] - Health Data Science </center>
+subtitle: | 
+  <center> Passi Analysis </center>
+author: |
+  <div align="center"><strong>Step by Passi</strong></div>
+  <div style="text-align: left; margin: 0 auto; width: fit-content;">
+    • Angeletti Giacomo – 888843<br>
+    • Crapanzano Edoardo – 889685<br>
+    • Dumitru Vlad Adrian – 883731<br>
+    • Zago Francesco – 889002
+  </div>
+date: | 
+  <center>2025-05-18</center>
+  <div align="center"><strong>© 2025 Giacomo Angeletti, Edoardo Crapanzano, Vlad Adrian Dumitru, Francesco Zago. All rights reserved.</strong></div>
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: flatly
+    code_folding: show
+    self_contained: true
+    fig_caption: true
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# <span style="font-size:20px;">Introduction</span>
+In this study, we aim to examine the cardiovascular risk, the presence of chronic disease, and psycho-physical health in the Italian population using data from the **PASSI surveillance system**, which has been operational nationwide since 2008. Each year, the PASSI survey collects self-reported information on lifestyle habits, risk factors, and health conditions via telephone interviews with a representative sample of residents aged 18 to 69. Thanks to the breadth and temporal continuity of these data, we can estimate the prevalence of hypertension, diabetes, overweight/obesity, smoking, and physical inactivity, as well as measure psychological well-being indicators such as anxiety, depression, and overall quality of life.<br><br>
+It is important to emphasize that PASSI data are cross-sectional, not panel: each year's sample is newly drawn, and the same individuals are not followed over time. This design allows us to accurately describe aggregate distributions and trends year by year, but id does not permit reconstruction of individual trajectories of risk evolution or health-status transitions. The cross-sectional nature of the data therefore limits causal inferences at the individual level, while ensuring a precise and representative snapshot of adult health conditions in Italy for each survey year.<br>
+In our study we have decided to analyse the years of 2009 and 2019, in order to be able to observe changes over the course of ten years.<br><br>
+The topics covered will be the following:<br>
+• **SOCIOECONOMIC VARIABLES RELATED TO CHRONIC DISEASES**;<br>
+• **CARDIOVASCULAR RISK IN RELATION TO THE QUANTITY OF CIGARETTES SMOKED AND ALCOHOL CONSUMPTION**;<br>
+• **HYPERTENSION CONDITIONS RELATED TO PHYSICAL ACTIVITY**;<br>
+• **PHYSICAL HEALTH IN RELATION TO MENTAL WELL-BEING**.
+
+
+## <span style="font-size:20px;">Uploading and Data Cleaning</span>
+```{r passi, results = "hide"}
+passi_cleaned = read.csv("passi_cleaned")
+```
+
+The packages used to create the codes are the following:
+```{r libraries, results = "hide"}
+library(tidyverse)      # Collection of data science packages
+library(dplyr)          # Data manipulation with verbs
+library(lme4)           # Fit mixed-effects models
+library(MASS)           # Stats functions and datasets
+library(ggplot2)        # Create elegant data visualizations
+library(tidyr)          # Tidy and reshape data
+library(sf)             # Handle spatial vector data
+library(broom.mixed)    # Tidy mixed model outputs
+library(epitools)       # Epidemiological analysis tools
+library(scales)         # Scale functions for visualization
+library(AER)            # Overdispersion test
+library(lmtest)         # Tests for linear regression models
+library(Matrix)         # Sparse and dense matrix operations
+library(car)            # Companion to applied regression
+library(gridExtra)      # Arrange multiple grid-based plots
+```
+
+Since the regions within the dataset were named using codes, we modified each number to correspond to the correct name of the region.
+```{r regions_name}
+regions_name = c(
+  "10" = "Piemonte",
+  "20" = "Valle D'Aosta",
+  "30" = "Lombardia",
+  "41" = "Alto Adige",
+  "42" = "Trentino",
+  "50" = "Veneto",
+  "60"= "Friuli Venezia Giulia",
+  "70" = "Liguria",
+  "80" = "Emilia-Romagna",
+  "90" = "Toscana",
+  "100" = "Umbria",
+  "110" = "Marche",
+  "120" = "Lazio",
+  "130" = "Abruzzo",
+  "140" = "Molise",
+  "150" = "Campania",
+  "160" = "Puglia",
+  "170" = "Basilicata",
+  "180" = "Calabria",
+  "190" = "Sicilia",
+  "200" = "Sardegna")
+
+# Then we modify the old `regione` with the new values
+passi_cleaned$regione = regions_name[as.character(passi_cleaned$regione)]
+```
+
+From the dataset `passi_cleaned`, for both years of interest (2009 and 2019), we have selected only the variables necessary for our analysis, in order to make it easier to read and modify the dataset.
+```{r dataset provvisorio}
+dataset_provvisorio = passi_cleaned %>% filter(anno == 2009 | anno == 2019) %>% 
+  dplyr::select(anno,regione,asl,sesso_intervistato,claeta3,comune_intervistato,lettera_asl,
+                claeta3,s01_salute,s01_salute_fis,s01_salute_psic,s01_abit_attiv,s01_diabete,
+                s01_insuff_renale,s01_asma_bronchiale,s01_bronchite,s01_ictus,s01_ima,
+                s01_altre_malattie_cuore,s01_tumori,s01_malattie_croniche,s01_artrosi,
+                s01_vaccin,s01_vaccin_ultima,s02_lavoro,s02_lavoro_attiv,s02_tlib_attiv_inte,
+                s02_tlib_attiv_inte_gg,s02_tlib_attiv_inte_min,s02_attiv_moder,
+                s02_attiv_moder_gg,s02_attiv_moder_min,s02_attiv_30_gg_quanto,
+                s02_sanit_att_chiesto,s03_fumo_chiesto,s03_fumo,s03_fumo_att,
+                s03_fumo_quanto,s03_smesso_tent,s03_fumo_cons,s03_sugg_op_san,
+                s03_influenza_consiglio,s03_smesso_quando,s03_sugg_op_san,
+                s03_influenza_consiglio,s03_smesso_come,s03_fumava_quanto,
+                s03_fumo_pubblico,s03_lav_amb_chiusi,s03_fumo_lavoro,s04_peso_cons,
+                s04_peso_dieta,s04_peso_giud,s04_consu_frutta,s05_alcool_gg,
+                s05_alcool_quanto,s05_alcool_quando,s05_alcool_quando_pasti,
+                s05_alcool_quanto_piu,s05_alcool_quanto_piu,s05_alcool_guida,
+                s05_alcool_guida_volte,s05_alcool_passegg,s05_alcool_passegg_volte,
+                s05_alcool_chiesto,s05_alcool_sugg_san,s05_alcool_sugg_fam,
+                s05_alcool_sugg_altro,s05_alcool_sugg_no,s05_alcool_sugg_non_so,
+                s05_alcool_passegg,s05_alcool_passegg_volte,s05_alcool_chiesto,
+                s07_press_mis,s07_press_quando,s07_press_alta,s07_sugg_sale_press,
+                s07_sugg_att_fis_press,s07_sugg_peso_press,s07_press_farm,
+                s07_colest_mis,s07_colest_quando,s07_med_colest_alto,s07_sugg_carne_col,
+                s07_sugg_att_fis_col,s07_sugg_peso_col,s07_sugg_frutta_col,s07_colest_farm,
+                s07_eta,s07_calc_risc,s12_poco_inter_gg,s12_giu_morale_gg,s12_aiuto_sanit,
+                s12_aiuto_fiducia,s12_aiuto_no,s12_aiuto_non_ric,s14_stato_civ,s14_con_nes,
+                s14_con_coni,s14_con_bamb,s14_con_giov_ad,s14_con_anz,s14_cittadin, s14_cittadin_ita,
+                s14_cittadin_stran,s14_tempo_in_italia,s14_tit_stud,s14_disp_econ,s14_altez,s14_peso,cardiovasc)
+```
+
+Then we extracted a **representative sample (20%)** from the dataset `dataset_provvisorio`, maintaining the representativeness of some categories:<br>
+• **Year**;<br>
+• **ASL**;<br>
+• **Sex**;<br>
+• **Age classes (18-34, 35-49, 50-69)**.
+```{r dataset definitivo}
+set.seed(123)
+dataset_definitivo = dataset_provvisorio %>% 
+  group_by(anno, asl, sesso_intervistato, claeta3) %>%
+  slice_sample(prop = 0.2) %>%   
+  ungroup()
+```
+
+# <span style="font-size:20px;">Socioeconomic Variables related to Chronic Diseases</span>
+In this section, a subset of the full dataset was created in order to focus the analysis on a selection of relevant socioeconomic variables. These include: height, weight, gender, age group, income level, education level, citizenship, year, region, and local health authority (ASL).<br>
+The analytical approach followed a stepwise structure. First, a preliminary exploration was conducted for each variable to assess its distribution and potential association with the risk of chronic diseases. Based on this exploration, each variable was evaluated before inclusion in the models.<br>
+The first main objective was to model the risk of having at least one chronic disease using **logistic regression**. This was done separately for the years 2009 and 2019 to investigate potential differences over time.<br>
+Subsequently, to account for territorial effects, a **Generalized Linear Mixed Model (GLMM)** was fitted, incorporating either regions or local health authorities (ASL) as random effects. Model comparisons were carried out to determine which random effect structure provided the best fit.<br>
+Finally, the outcome variable was redefined to represent the number of chronic diseases reported by each individual. In this case, the suitability of **count data models** was examined, and both Poisson and Negative Binomial regressions were tested to identify the most appropriate specification.
+```{r s14_cittadin, results = "hide"}
+# The variable s14_cittadin was used for the year 2019, whereas s14_cittadin_ita was used for 2009
+dataset_definitivo$cittadinanza = ifelse(dataset_definitivo$anno == 2019,
+  dataset_definitivo$s14_cittadin, dataset_definitivo$s14_cittadin_ita)
+
+dtpa = dataset_definitivo %>% dplyr::select(s01_diabete, s01_insuff_renale, s01_bronchite, s01_ima, s01_tumori, cittadinanza, s14_cittadin_stran, s14_tit_stud, s14_disp_econ, s14_altez, s14_peso, sesso_intervistato, claeta3, anno, regione, asl)
+
+dtpa$s01_diabete = as.factor(dtpa$s01_diabete)
+dtpa$s01_insuff_renale = as.factor(dtpa$s01_insuff_renale)
+dtpa$s01_bronchite = as.factor(dtpa$s01_bronchite)
+dtpa$s01_ima = as.factor(dtpa$s01_ima)
+dtpa$s01_tumori = as.factor(dtpa$s01_tumori)
+
+dtpa$cittadinanza = as.factor(dtpa$cittadinanza)
+dtpa$s14_tit_stud = as.factor(dtpa$s14_tit_stud)
+dtpa$s14_disp_econ = as.factor(dtpa$s14_disp_econ)
+dtpa$sesso_intervistato = as.factor(dtpa$sesso_intervistato)
+dtpa$claeta3 = as.factor(dtpa$claeta3)
+dtpa$regione = as.factor(dtpa$regione)
+dtpa$anno = as.factor(dtpa$anno)
+
+dtpa = dtpa[complete.cases(dtpa[c("s14_disp_econ",
+                                  "s14_tit_stud","cittadinanza")]), ]
+dtpa = dtpa[dtpa$cittadinanza != "", ]
+dtpa$cittadinanza = droplevels(dtpa$cittadinanza) # Removes the levels that are no longer present 
+
+dtpa$claeta3= ifelse(dtpa$claeta3 == 1, '18-34',
+                                   ifelse(dtpa$claeta3 == 2, '35-49',
+                                          ifelse(dtpa$claeta3 == 3, '50-69', NA)))
+```
+
+## <span style="font-size:20px;">Logistic Regression analysis</span>
+As previously mentioned, this chapter presents a logistic regression analysis. It begins by focusing on key variables established in the medical literature, namely **BMI**, **age**, and **gender**, before exploring additional variables of interest.<br>
+Our response variable was constructed as follows:<br>
+$$
+\text{malattiecroniche}_i = 
+\begin{cases}
+1 & \text{if the subject has at least one chronic disease} \\
+0 & \text{otherwise}
+\end{cases}
+$$
+```{r malattie croniche, results = "hide"}
+dtpa$malattiecroniche = ifelse(dtpa$s01_diabete == "t" | dtpa$s01_insuff_renale == "t" |
+  dtpa$s01_bronchite == "t"  | dtpa$s01_ima == "t"  | dtpa$s01_tumori == "t" , 1, 0)
+dtpa$malattiecroniche = as.factor(dtpa$malattiecroniche)
+```
+
+**BMI**<br>
+Body Mass Index (BMI) is a widely used indicator to classify individuals based on their body weight relative to height. BMI is commonly used to assess whether a person is underweight, normal weight, overweight, or obese, which are categories associated with varying health risks. It is calculated as the ratio of weight in kilograms to the square of height in meters:<br>
+$$
+\text{BMI} = \frac{\text{weight (kg)}}{\text{height (m)}^2}
+$$
+```{r BMI, results = "hide"}
+dtpa$BMI = dtpa$s14_peso / ((dtpa$s14_altez/100)^2)
+dtpa = dtpa %>% filter(BMI <= 80) # Avoiding meaningless observations (height=1)
+```
+
+A histogram was created to visualize the distribution of the BMI variable:
+```{r histogram BMI}
+ggplot(dtpa, aes(x = BMI)) +
+  geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
+  labs(title = "Distribution of the BMI Variable", x = "BMI", y = "Frequency")+
+  theme_minimal()
+```
+
+To assess whether BMI differs between individuals with and without chronic diseases, Shapiro-Wilk tests were performed separately for the two groups. At least one group did not follow a normal distribution. Additionally, the Levene’s Test indicated that the variances between groups were not equal.<br>
+Therefore, a Wilcoxon rank-sum test was used instead of a t-test.
+```{r wilcoxon}
+shapiro.test(dtpa$BMI[dtpa$malattiecroniche == 1])  # Not normal
+leveneTest(BMI ~ malattiecroniche, data = dtpa)     # Different variances
+
+# Use Wilcox
+wilcox.test(BMI ~ malattiecroniche, data = dtpa)
+```
+
+Since the null hypothesis was rejected, we have evidence to suggest that there is a significant association between BMI and the presence of chronic diseases.<br>
+A boxplot was created to compare the distribution of BMI values between individuals with and without chronic diseases, highlighting differences in median, spread, and potential outliers.<br>
+Moreover, density plots with transparency were overlaid to visualize and compare the distribution shapes of BMI for the two groups (with and without chronic diseases). Different colors represent each group for better distinction.
+```{r BMI chronic disease}
+# Boxplot
+p1 = ggplot(dtpa, aes(x = malattiecroniche, y = BMI)) +  geom_boxplot()  +
+  labs(x = "Chronic Disease")
+
+# Overlapping distributions
+p2 = ggplot(dtpa, aes(x = BMI, fill = as.factor(malattiecroniche))) +
+  geom_density(alpha = 0.4) +
+  scale_fill_manual(values = c("lightblue", "pink")) +
+  labs(title = "BMI Distribution", x = "BMI", fill = "Chronic Disease")
+
+library(patchwork)
+p1 + p2 
+```
+
+We can see that people with at least one chronic disease have, on average, a significantly higher BMI than those without any chronic diseases.<br><br>
+**Sex**<br>
+To explore the relationship between chronic diseases and sex, we first create a contingency table of disease status by sex. Then, we calculate the conditional probabilities of having a chronic disease given each sex group, which provides a clearer understanding of the distribution of chronic diseases within males and females.
+```{r contingency table disease status by sex}
+table(dtpa$malattiecroniche, dtpa$sesso_intervistato)
+prop.table(table(dtpa$malattiecroniche, dtpa$sesso_intervistato), margin = 2) 
+# For this study, it makes more sense to ask: given that the sex is female, what is the proportion of those with and without chronic diseases? This represents the conditional probability P(disease|sex=F).
+```
+
+A Chi-squared test of independence is performed to assess whether there is a statistically significant association between chronic disease status and sex.
+```{r chi-squared chronic disease status and sex}
+chisq.test(table(dtpa$malattiecroniche, dtpa$sesso_intervistato))
+```
+
+There is no statistically significant evidence to suggest that the presence of chronic diseases depends on sex.  
+The following plot provides a visual representation of this relationship:
+```{r percentage of chronic diseases by sex}
+ggplot(dtpa, aes(x = sesso_intervistato, fill = malattiecroniche)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(fill = "Chronic Disease", x = "Sex", y = "Percentage", ,
+  title = "Percentage Distribution of Chronic Diseases by Sex") +
+  theme_minimal()
+```
+
+**Age Group**<br>
+Age group is theoretically expected to influence the risk of chronic diseases, as supported by existing literature. Generally, older individuals have a higher likelihood of developing chronic conditions compared to younger age groups.<br><br>
+The same steps used for the sex variable are applied to test this.
+```{r chronic diseases age group}
+table(dtpa$malattiecroniche, dtpa$claeta3)
+prop.table(table(dtpa$malattiecroniche, dtpa$claeta3), margin = 2)
+
+chisq.test(table(dtpa$malattiecroniche, dtpa$claeta3))
+```
+
+The chi-squared test reveals a statistically significant association between age group (categorized into three levels) and the presence of at least one chronic disease (p < 0.001). The proportion of individuals with chronic diseases increases clearly with age, from 5,3% in the youngest group to 27,5% in the oldest group. This suggests that age is strongly associated with the risk of developing chronic conditions, as expected.
+```{r percentage distribution chronic diseases by age group}
+ggplot(dtpa, aes(x = claeta3, fill = malattiecroniche)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(fill = "Chronic Disease", x = "Age Group", y = "Percentage",
+       title = "Percentage Distribution of Chronic Diseases by Age Group") +
+  theme_minimal()
+```
+
+### <span style="font-size:20px;">Basic Models</span>
+Throughout the logistic regression analysis, a separate model is estimated for each year (2009 and 2019). The aim is not only to assess the impact of various predictors on the likelihood of having at least one chronic disease, but also to identify the best-fitting model for each year, taking into account that the underlying mechanisms may have changed over time.<br>
+In this sense, the model is tailored to the data structure of each specific year, in order to better capture the context of that period.<br><br>
+Any differences observed in the coefficients across years may suggest changes in the role of certain variables; however, such differences are not formally tested for statistical significance.
+```{r basic models}
+mod_log_1_2009 = glm(malattiecroniche ~ BMI + claeta3 + sesso_intervistato, 
+                      data = dtpa, subset = anno == 2009, family = binomial)
+
+summary(mod_log_1_2009)
+
+mod_log_1_2019 = glm(malattiecroniche ~ BMI + claeta3 + sesso_intervistato, 
+                      data = dtpa, subset = anno == 2019, family = binomial)
+
+summary(mod_log_1_2019)
+```
+
+For both years, the coefficients associated with BMI and age groups are statistically significant, suggesting that these variables consistently play an important role in predicting the likelihood of having at least one chronic disease.  
+To facilitate visualization and comparison, a table was created to display the differences between the estimated coefficients.
+```{r comparison}
+# Comparison
+coef_2009 = summary(mod_log_1_2009)$coefficients
+coef_2019 = summary(mod_log_1_2019)$coefficients
+
+confronto = data.frame(
+  "Estimate_2009" = coef_2009[, "Estimate"],
+  "SE_2009" = coef_2009[, "Std. Error"],
+  "Estimate_2019" = coef_2019[, "Estimate"],
+  "SE_2019" = coef_2019[, "Std. Error"]
+)
+confronto$Differenza = confronto$Estimate_2019 - confronto$Estimate_2009
+round(confronto, 3)
+```
+
+The most notable differences are found in the coefficients for the older age groups. In both cases, the increase from 2009 to 2019 suggests that, all else being equal, the association between age and the likelihood of having at least one chronic disease has become stronger over time. However, these differences are not statistically tested, and should therefore be interpreted as descriptive insights rather than as conclusive evidence of change.<br>
+Although the intercept represents the log-odds when all predictors are equal to zero, which is not a meaningful scenario in practice (e.g., BMI = 0), the difference between the intercepts for 2009 and 2019 may still carry some interpretive value. It could reflect systemic changes in the population context over time that are not fully explained by the variables included in the model.<br><br>
+**Basic Models with interactions**<br>
+To better investigate the role of sex, interaction terms were included in the basic models.<br>
+It is possible that sex does not have a significant average effect, but still plays a role by influencing the relationship between other variables and chronic disease. For example, the effect of age or BMI on the risk of chronic conditions may differ between men and women.
+```{r basic models with interactions}
+# To address multicollinearity issues, the BMI variable is centered
+dtpa$BMI_c = as.numeric(scale(dtpa$BMI, center = TRUE, scale = FALSE))
+
+mod_log_1b_2009 = glm(malattiecroniche ~ BMI_c*sesso_intervistato + claeta3*sesso_intervistato, family = binomial, subset = anno == 2009, data = dtpa)
+
+summary(mod_log_1b_2009)
+
+mod_log_1b_2019 = glm(malattiecroniche ~ BMI_c*sesso_intervistato + claeta3*sesso_intervistato, family = binomial, subset = anno == 2019, data = dtpa)
+
+summary(mod_log_1b_2019)
+```
+
+In these models with interactions, it is observed that only in 2019 the variable sex has a significant direct effect on the risk of chronic diseases, while in 2009 this effect is not significant.<br>
+Moreover, the interaction between sex and the oldest age group is also significant in 2019. The positive coefficient of this interaction term indicates that for males in the oldest age group, the increase in risk (log-odds) of having chronic diseases is even higher compared to females in the same age group.<br>
+To visually represent the interaction between sex and age group, predicted probabilities were calculated while holding BMI fixed at its mean-centered value. This approach allows us to observe how the risk of chronic diseases varies across sexes and age groups in the 2009 and 2019 models.
+```{r ggpredict}
+# Remember that 2009 is not significant
+library(ggeffects)
+
+eff1 = ggpredict(mod_log_1b_2009, terms = c("claeta3", "sesso_intervistato", "BMI_c [0]")) # BMI is fixed at the centered value 0 (the mean of BMI_c)
+
+plot(eff1) + labs(x = "Age Group", y = "Predicted Probability",
+    title = "Predicted Probability of Chronic Disease (2009)", color = "Sex") +
+  theme_minimal()
+
+eff2 = ggpredict(mod_log_1b_2019, terms = c("claeta3", "sesso_intervistato", "BMI_c [0]"))
+
+plot(eff2) + labs(x = "Age Group", y = "Predicted Probability",
+    title = "Predicted Probability of Chronic Disease (2019)", color = "Sex") +
+  theme_minimal()
+```
+
+It is important to highlight that the same pattern is observed for both years. For the younger age groups, women have a higher predicted probability of having chronic diseases, whereas in the oldest age group, men show a higher predicted probability of chronic disease risk.<br><br>
+**Income Level**<br>
+Income level is included as a key socioeconomic variable because it strongly influences an individual’s ability to access healthcare services, afford nutritious food, maintain healthier lifestyles, and manage stress. These factors are all closely linked to the risk of developing chronic diseases. Therefore, controlling for income level helps to better understand its role in health outcomes and reduces confounding in the analysis.
+```{r income level}
+# Transform the variable so that low incomes --> high incomes
+dtpa$s14_disp_econ = factor(dtpa$s14_disp_econ, levels=c(4,3,2,1))
+
+prop.table(table(dtpa$s14_disp_econ, dtpa$malattiecroniche), 1)
+
+ggplot(dtpa, aes(x = s14_disp_econ, fill = malattiecroniche)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(fill = "Chronic Disease", x = "Income Level", y = "Percentage",
+       title = "Percentage Distribution of Chronic Diseases by Income Level") +
+  theme_minimal()
+```
+
+The original variable was reduced from four categories to two: low and high. This simplification facilitates the analysis by making it easier to interpret and manage, focusing on the main contrast between lower and higher levels.
+```{r lower and higher levels}
+dtpa$s14_disp_econ_mod = ifelse(dtpa$s14_disp_econ == 3 | 
+                                dtpa$s14_disp_econ == 4, "low", "high")
+dtpa$s14_disp_econ_mod = factor(dtpa$s14_disp_econ_mod, levels=c("low","high"))
+
+prop.table(table(dtpa$s14_disp_econ_mod, dtpa$malattiecroniche), 1)
+chisq.test(table(dtpa$s14_disp_econ_mod, dtpa$malattiecroniche))
+```
+
+The proportion of chronic diseases differs between these groups, with 17,6% affected in the low category and 13,9% in the high. A Pearson’s chi-square test showed that this difference is statistically significant, indicating that income level is associated with chronic disease risk.
+```{r percentage distribuion chronic diseases by income level}
+ggplot(dtpa, aes(x = s14_disp_econ_mod, fill = malattiecroniche)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(fill = "Chronic Disease", x = "Income Level", y = "Percentage",
+       title = "Percentage Distribution of Chronic Diseases by Income Level") +
+  theme_minimal()
+```
+
+**Education Level**<br>
+This variable is included because education significantly influences health literacy, which in turn affects an individual’s ability to prevent diseases, manage risk factors effectively, and maintain healthy behaviors.
+```{r education level}
+# There are few observations for "nessun titolo", so these are combined with "licenza elementare"
+dtpa$s14_tit_stud_mod = 0
+dtpa$s14_tit_stud_mod[dtpa$s14_tit_stud == 1] = 2
+dtpa$s14_tit_stud_mod[dtpa$s14_tit_stud == 2] = 2
+dtpa$s14_tit_stud_mod[dtpa$s14_tit_stud == 3] = 3
+dtpa$s14_tit_stud_mod[dtpa$s14_tit_stud == 4] = 4
+dtpa$s14_tit_stud_mod[dtpa$s14_tit_stud == 5] = 5
+
+dtpa$s14_tit_stud_mod = factor(dtpa$s14_tit_stud_mod,
+                                levels = c(2, 3, 4, 5),
+                                labels = c("Primary school or less", 
+                                           "Lower secondary", 
+                                           "Upper secondary", 
+                                           "University degree"))
+
+prop.table(table(dtpa$s14_tit_stud_mod, dtpa$malattiecroniche), 1)
+chisq.test(table(dtpa$s14_tit_stud_mod, dtpa$malattiecroniche))
+```
+
+Education level seems to be linked to the risk of chronic diseases; however, this association is likely influenced by age. Older individuals, who generally have lower average education levels, are more prone to developing chronic conditions, as previously observed.
+```{r plot education level}
+prop.table(table(dtpa$claeta3, dtpa$s14_tit_stud_mod), 2)
+
+plot = as.data.frame(prop.table(table(dtpa$claeta3, dtpa$s14_tit_stud_mod), 2))
+colnames(plot) = c("Age_Group", "Education_Level", "Percentage")
+
+ggplot(plot, aes(x = as.factor(Education_Level), y=Percentage, group=Age_Group, color = Age_Group)) + geom_line(linewidth = 1.5) + geom_point(size = 2) +
+    scale_color_manual(values = c("#B2DF8A", "#33A02C", "#006400")) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(x = "Education Level", y = "Percentage by Age Group", color = "Age Group") + theme_minimal()
+```
+
+The education level with the highest proportions of individuals affected by chronic diseases (primary school or less, with 38,7% of individuals having at least one chronic disease) is disproportionately represented among the oldest age group. This pattern suggests that the apparent association between education and chronic disease risk may largely reflect age-related differences. Nonetheless, education will be included in the model, and its interaction with age will be explored to better understand their combined effect.<br><br>
+**Citizenship**<br>
+Citizenship status is included in the model because being a foreign citizen may affect access to the healthcare system due to potential language barriers, limited knowledge of available services, and often more precarious or physically demanding working conditions. These factors can contribute to differences in chronic disease risk.
+```{r citizenship}
+dtpa$cittadinanza[dtpa$cittadinanza == "t"] = "1"
+dtpa$cittadinanza[dtpa$cittadinanza == "f"] = "2"
+dtpa$cittadinanza[dtpa$cittadinanza == "3"] = "1" # Double citizenship considered as italian(1) because for 2009 this option wasn't available
+dtpa$cittadinanza=factor(dtpa$cittadinanza)       # Recreate levels
+
+prop.table(table(dtpa$cittadinanza, dtpa$malattiecroniche), 1)
+chisq.test(table(dtpa$cittadinanza, dtpa$malattiecroniche))
+```
+
+The difference in percentages between Italians and foreigners appears to be significant. Among foreigners, 11,4% have chronic diseases, whereas this percentage rises to 15,8% for Italians.<br><br>
+The observed lower percentage of chronic diseases among foreigners contrasts with initial expectations. It was anticipated that factors such as language barriers and limited knowledge of the healthcare system would lead to a higher prevalence of chronic diseases in the foreign-born population. However, the data shows the opposite pattern.<br>
+Actually, the health literature contains numerous references to the “healthy immigrant effect”. This phenomenon describes how immigrants often exhibit better initial health compared to the native population. It is thought to result from a selection bias, where healthier individuals are more likely to migrate. Additionally, cultural and language barriers, as well as limited access to healthcare, can lead to under-diagnosis or under-reporting of illnesses among immigrants, potentially masking the true extent of chronic conditions in this group.
+```{r percentage distribution chronic diseases by citizenship}
+ggplot(dtpa, aes(x = cittadinanza, fill = malattiecroniche)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(fill = "Chronic Disease", x = "Citizenship", y = "Percentage",
+       title = "Percentage Distribution of Chronic Diseases by Citizenship") +
+  theme_minimal()
+```
+
+In addition to the healthy immigrant effect, it is important to consider that the sample is unbalanced with respect to citizenship and age:
+```{r age group distribution by citizenship}
+tab = prop.table(table(dtpa$claeta3, dtpa$cittadinanza), 2)  
+tab
+
+barplot(tab, beside = TRUE,
+        main = "Age Group Distribution by Citizenship",
+        ylab = "Relative Frequency",
+        legend.text = TRUE,
+        args.legend = list(title = "Age Group", x = "topright", bty = "n"),
+        names.arg = c("Italian", "Foreign"),
+        col = c("#B2DF8A", "#33A02C", "#006400"))
+```
+
+Foreign-born individuals in the sample tend to be younger, with nearly 80% under the age of 65. To account for this, an interaction term between citizenship and age will be included in the extended model to capture any differential effects of citizenship across age groups.
+
+
+### <span style="font-size:20px;">Extended Models</span>
+The extended models retain the logistic regression structure of the basic models, adding to the original variables (BMI, sex, and age group) the newly considered factors of income level, education level, and citizenship status. This extension allows for a deeper understanding of the multiple influences on chronic disease risk.
+```{r extended models}
+mod_log_2_2009 = glm(malattiecroniche ~ BMI + claeta3 + sesso_intervistato + s14_disp_econ_mod + s14_tit_stud_mod + cittadinanza, data = dtpa,subset = anno == 2009, family = binomial)
+
+summary(mod_log_2_2009)
+
+mod_log_2_2019 = glm(malattiecroniche ~ BMI + claeta3 + sesso_intervistato + s14_disp_econ_mod + s14_tit_stud_mod + cittadinanza, data = dtpa,subset = anno == 2019, family = binomial)
+
+summary(mod_log_2_2019)
+```
+
+In both models, education level is a significant predictor of chronic disease risk, with higher education associated with lower risk. Income level, however, is only significant in the 2009 model, where higher economic status is linked to reduced risk; it is not significant in 2019. Citizenship does not show a significant effect in either year once other variables are accounted for. BMI and age group continue to be significant predictors in both models, while sex is no longer significant in the 2019 model.
+```{r estimate extended models}
+coef_2009 = summary(mod_log_2_2009)$coefficients
+coef_2019 = summary(mod_log_2_2019)$coefficients
+confronto=data.frame("Estimate_2009" = coef_2009[, "Estimate"],
+  "SE_2009" = coef_2009[, "Std. Error"],
+  "Estimate_2019" = coef_2019[, "Estimate"],
+  "SE_2019" = coef_2019[, "Std. Error"]
+)
+confronto$Differenza = confronto$Estimate_2019 - confronto$Estimate_2009
+round(confronto, 3)
+```
+
+The same procedure was applied as before, calculating the difference between the coefficients of the two models from the two years. For education level, the only significant variable in both years, the difference is negative. This indicates that the effect size associated with education decreased from 2009 to 2019, suggesting a stronger protective association of higher education against chronic diseases in 2019 compared to 2009.<br><br>
+**Extended Models with interactions**<br>
+In the Extended Models, we additionally include interaction terms between education level and age group, as well as between citizenship and age group. These interactions are introduced to account for the previously observed patterns. In particular, the facts that individuals with lower education levels tend to be older, and that foreign citizens in the sample are disproportionately younger.
+```{r extended models with interactions}
+mod_log_2b_2009 = glm(malattiecroniche ~ BMI + claeta3 + sesso_intervistato + s14_disp_econ_mod + s14_tit_stud_mod*claeta3 + cittadinanza*claeta3, data = dtpa,subset = anno == 2009, family = binomial)
+
+summary(mod_log_2b_2009)
+
+mod_log_2b_2019 = glm(malattiecroniche ~ BMI + claeta3 + sesso_intervistato + s14_disp_econ_mod + s14_tit_stud_mod + cittadinanza*claeta3, data = dtpa,subset = anno == 2019, family = binomial)
+# Multicollinearity problem for 2019: removed interaction between age and education level
+
+summary(mod_log_2b_2019)
+```
+
+Including interaction terms between education and age group, as well as between citizenship and age group, did not improve the explanatory power of the models for either 2009 or 2019. None of the interaction effects were statistically significant, suggesting that the relationship between these covariates and the probability of having chronic diseases does not vary meaningfully across age groups.<br>
+Moreover, the addition of interactions increased model complexity without substantial benefits. For instance, education (which was previously a significant predictor in 2009) lost its significance in the extended model, likely due to increased variance and multicollinearity.<br> 
+Overall, the extended models appear to overcomplicate the analysis without providing additional insight.
+
+
+### <span style="font-size:20px;">Model comparison and selection</span>
+The purpose of comparing the logistic regression models is to identify the best-fitting model for each year separately. It is important to emphasize that the optimal model structure for 2009 may differ from that for 2019, reflecting potential changes in the relationships between variables over time.<br>
+When the models being compared are nested, meaning one model is a simplified version of the other, the likelihood ratio test (lrtest() function) is used to check if the more complex model fits the data significantly better. For models that are not nested, the Akaike Information Criterion (AIC) is used to compare them, and the model with the lower AIC value is chosen as the better one.
+```{r model comparison and selection}
+# 2009
+AIC(mod_log_1_2009) 
+AIC(mod_log_1b_2009) # Mod_log_1b_2009 is better
+
+AIC(mod_log_2_2009) # Mod_log_2_2009 is better
+
+lrtest(mod_log_2_2009, mod_log_2b_2009) # Not significant at 5%
+AIC(mod_log_2b_2009) # AIC confirms: mod_log_2_2009 remains better
+```
+```{r model comparison and selection 2}
+# 2019
+AIC(mod_log_1_2019) 
+AIC(mod_log_1b_2019) # Mod_log_1b_2019 is better
+
+AIC(mod_log_2_2019) # Mod_log_2_2019 is better
+
+lrtest(mod_log_2_2019, mod_log_2b_2019) # Mod_log_2_2019 remains better
+```
+
+For 2009, the model mod_log_2_2009 is considered.<br>
+For 2019, based on the comparisons performed, the model mod_log_2_2019 appears to be slightly better; however, it does not include the sex*age interaction, which was significant in the mod_log_1b_2019 model. Therefore, it was decided to consider the latter model and add education level as a covariate. This results in the best possible model:
+```{r choosing model of 2019, message = FALSE, warning = FALSE}
+mod_top_2019 = glm(formula = malattiecroniche ~ BMI_c * sesso_intervistato + 
+    claeta3 * sesso_intervistato + s14_tit_stud_mod, family = binomial, data = dtpa, subset = anno == 2019)
+
+summary(mod_top_2019)
+
+AIC(mod_log_2_2019)
+AIC(mod_top_2019)
+```
+
+
+### <span style="font-size:20px;">Model Interpretation</span>
+**2009**:
+```{r mod_log 2009}
+summary(mod_log_2_2009)
+```
+
+The coefficients are in log-odds form, so we exponentiate them to interpret effects as odds ratios. Significant coefficients indicate predictors that have a meaningful association with the outcome.<br>
+In particular, for each one-unit increase in BMI, the odds of having a chronic disease increase by approximately 4,3% (because exp(0.04184) = 1.0427).<br>
+Being in the middle (35-49) age group (compared to the baseline age group 18-34) increases the odds of chronic disease by about 61,3%. Being in the oldest age group increases the same odds by approximately 355%. Older age strongly increases the risk of chronic diseases. Having a high income level decreases the odds of chronic diseases by about 17,5%.<br>
+Compared to the baseline (primary school or less), higher education levels significantly decrease the odds of chronic diseases:<br>
+•  **Lower secondary**: 35,3% decrease in odds;<br>
+•  **Upper secondary**: 49,0% decrease in odds;<br>
+•  **University degree**: 42,9% decrease in odds.<br>
+It is possible to conclude that higher education is protective against chronic diseases.<br><br>
+**2019**:
+```{r mod_top 2019}
+summary(mod_top_2019)
+```
+
+Each 1-unit increase in BMI above the mean (because the variable is centered) increases the odds of chronic diseases by about 4,9% (similar to 2009).<br>
+Males have about 55% lower odds of chronic diseases compared to females when BMI is average and other covariates at baseline.<br>
+The effect of age on chronic diseases became stronger in 2019 because, compared to the youngest age group:<br>
+• **Middle age group (35-49)** increases odds by 122%;<br>
+• **Oldest group (50-69)** increases odds by 414%.<br>
+In addition,  considering the significant interaction coefficient, for males in the oldest age group, odds are increased by an additional 151% compared to females in the same age group. This means older males have a much higher risk compared to older females in 2019.<br>
+Education remains a protective factor, with slightly larger reductions in odds in 2019, 42% for Lower secondary, 53% for both Upper secondary and University degree.
+
+
+## <span style="font-size:20px;">Generalized Linear Mixed Models (GLMM)</span>
+The dependent variable remains unchanged, indicating whether an individual has at least one chronic disease (value 1). In this analysis, geographical factors such as regions or local health authorities (ASL) are included as random effects to account for variability across areas. Moreover, the year is now incorporated as a fixed effect within the model, allowing us to examine temporal trends while properly accounting for the hierarchical structure of the data.<br>
+This model includes the variable year as well as the covariates from the basic model: BMI, age group, and sex.<br>
+The objective is to identify the model whose random effect best explains the data. Therefore, models will be considered with random effects for ASL, for regions, and one including the macroarea covariate.
+```{r glmm BMI}
+dtpa$anno = as.integer(as.character(dtpa$anno))
+dtpa$anno_c = dtpa$anno - mean(dtpa$anno) # Year centered for converge failure
+
+dtpa$asl = as.factor(dtpa$asl)
+
+glmm_1 = glmer(dtpa$malattiecroniche ~ BMI_c + claeta3 + sesso_intervistato + anno_c + (1 | asl), data = dtpa, family = binomial)
+# Summary(glmm_1)
+parameters::random_parameters(glmm_1)
+
+glmm_2 = glmer(malattiecroniche ~ BMI_c + claeta3 + sesso_intervistato+anno_c + 
+                    (1 | regione), data = dtpa, family = binomial)
+# Summary(glmm_2)
+parameters::random_parameters(glmm_2)
+```
+
+In the model with random intercepts at the ASL level, although the variance of the random effect is small (0.03), it is different from zero, indicating the presence of variability among ASLs that contributes to the model. Conversely, in the model with random intercepts at the Region level, the variance of the random effect is essentially zero, suggesting that differences between Regions do not significantly explain variability in the data. Therefore, it is more appropriate to retain the random effect at the ASL level rather than at the Region level.
+```{r AIC BMI}
+AIC(glmm_1, glmm_2)
+```
+
+The AIC values confirm this reasoning, with the model including the random effect at the ASL level showing better fit compared to the model with the random effect at the Region level.<br>
+Now, the best model (ASL as random effect) will be extended by adding a covariate for the macroarea.
+```{r BMI with ASL}
+dtpa$macroarea = NA
+dtpa$macroarea[dtpa$regione %in% c("Piemonte", "Valle D'Aosta", "Lombardia", 
+                                   "Veneto", "Friuli Venezia Giulia", 
+                                   "Liguria", "Emilia-Romagna", "Trentino", 
+                                   "Alto Adige")] = "NORD"
+dtpa$macroarea[dtpa$regione %in% c("Toscana", "Umbria", "Marche", "Lazio")] = "CENTRO"
+dtpa$macroarea[dtpa$regione %in% c("Abruzzo", "Molise", "Campania", "Puglia", 
+                                   "Basilicata", "Calabria", "Sicilia", 
+                                   "Sardegna")] = "SUD"
+dtpa$macroarea = factor(dtpa$macroarea, levels = c("NORD", "CENTRO", "SUD"))
+
+
+glmm_3 = glmer(malattiecroniche ~ BMI_c + claeta3 + sesso_intervistato + anno_c + macroarea + (1 | asl), data = dtpa, family = binomial)
+summary(glmm_3)$coefficients[c(7,8),]
+parameters::random_parameters(glmm_3)
+AIC(glmm_3)
+```
+
+The differences between the two models are minimal, and the macroarea covariate in model glmm_3 is not statistically significant. Once we control for age, sex, BMI, year, and include a random intercept for ASL, no significant differences emerge in the risk of chronic diseases across macroareas. Therefore, for the sake of simplicity, model glmm_1 is preferred. Moreover, the AIC of glmm_3 is higher than that of glmm_1, further supporting the preference for the more parsimonious model.
+
+
+### <span style="font-size:20px;">Model Interpretation</span>
+Each point on the following plot represents the estimated effect of a predictor on the likelihood of having at least one chronic disease, while holding the other variables constant.
+```{r plot the BMI model}
+sjPlot::plot_model(glmm_1, show.values = TRUE,show.p=TRUE)
+```
+
+For every one-unit increase in BMI (centered), the odds of having at least one chronic disease increase by about 6%.<br>
+Individuals in the middle age group have approximately 85% higher odds of having a chronic disease compared to the reference, while the oldest individuals are over six times more likely to suffer from at least one chronic disease compared to the youngest group.<br>
+For the first time, the variable year was included as a covariate in the model, and it emerged as statistically significant. Specifically, the results suggest a 6.5% decrease in the odds of having at least one chronic disease in 2019 compared to 2009, after adjusting for BMI, age group, sex, and ASL-level random effects. This finding may reflect general improvements in public health or better chronic disease prevention and management over the decade.<br><br>
+To better understand the hierarchy among ASLs, let’s examine the plot displaying the top and bottom ASLs based on their deviation from the overall average risk of chronic diseases, as captured by the random intercepts.
+```{r BMI model interpretation}
+re = ranef(glmm_1)$asl
+re_df = data.frame(asl = rownames(re), intercept = re[,1])
+
+top5 = tail(re_df[order(re_df$intercept), ], 5)
+bottom5 = head(re_df[order(re_df$intercept), ], 5)
+extremes = rbind(top5, bottom5)
+
+etichette = c("Savona", "Arezzo", "Ferrara", "Rieti", "Salerno", "Napoli", "Bologna", "Alessandria", "Verona", "Perugia")
+
+ggplot(extremes, aes(x = reorder(asl, intercept), y = intercept)) +
+  geom_col() +
+  coord_flip() +
+  scale_x_discrete(labels = etichette) +  
+  labs(title = "Top 5 and Bottom 5 Random Effects by ASL",
+       x = "ASL", y = "Random Effect")
+```
+
+
+## <span style="font-size:20px;">Count Data Models: Poisson and Negative Binomial Regression</span>
+In this section, we model the number of chronic diseases using count data regression techniques. To do so, we first created a new variable that counts the total number of chronic diseases reported by each individual:<br>
+$$
+Y_i = D_{i} + R_{i} + B_{i} + M_{i} + T_{i}
+$$<br>
+where each dummy variable assumes the value:<br>
+$$
+X_i =
+\begin{cases}
+1 & \text{if individual } i \text{ has the condition} \\
+0 & \text{otherwise}
+\end{cases}
+$$
+```{r counts data models}
+dtpa = dtpa %>%
+  mutate(
+    s01_diabete = ifelse(s01_diabete == "t", 1, 0),
+    s01_insuff_renale = ifelse(s01_insuff_renale == "t", 1, 0),
+    s01_bronchite = ifelse(s01_bronchite == "t", 1, 0),
+    s01_ima = ifelse(s01_ima == "t", 1, 0),
+    s01_tumori = ifelse(s01_tumori == "t", 1, 0)
+  )
+
+dtpa$count_malattie = 
+  dtpa$s01_diabete + 
+  dtpa$s01_insuff_renale + 
+  dtpa$s01_bronchite + 
+  dtpa$s01_ima + 
+  dtpa$s01_tumori
+```
+
+The mean and variance of the count variable representing the number of chronic diseases are calculated to assess the appropriate count model:
+```{r chossing for counts data model}
+mean(dtpa$count_malattie)
+var(dtpa$count_malattie)
+```
+
+The Poisson distribution assumes equality between mean and variance. When the variance exceeds the mean (overdispersion), the Negative Binomial model is typically preferred as it accounts for extra variability.<br>
+Given that the data is near this borderline, both Poisson and Negative Binomial models will be fitted and subsequently compared to determine the better fit.<br>
+As in the case of the GLMM, here too the covariates considered are those from the basic model, namely BMI, age, and sex.
+```{r chossing for counts data model 2}
+pois = glm(count_malattie ~ BMI + claeta3 + sesso_intervistato + anno,
+                family = poisson(link = "log"), data = dtpa)
+AIC(pois)
+
+library(MASS)
+nb = glm.nb(count_malattie ~ BMI + claeta3 + sesso_intervistato + anno,
+                 data = dtpa)
+AIC(nb)
+```
+
+A lower AIC indicates a better model in terms of the trade-off between goodness of fit and model complexity. Therefore, the Negative Binomial model is preferred and will be used for further considerations.
+
+
+### <span style="font-size:20px;">Model Interpretation</span>
+```{r model interpretation negative binomial}
+summary(nb)
+sjPlot::plot_model(nb, show.values = TRUE, show.p = TRUE)
+```
+
+Each one-unit increase in BMI is associated with an expected increase of approximately 5% in the number of chronic diseases, holding other variables constant.  
+Being in the middle age group, compared to the reference group, is associated with an expected increase of about 75,4% in the number of chronic diseases. Being in the third (oldest) age group, compared to the reference group, is associated with an expected increase of approximately 507% (more than 5 times) in the number of chronic diseases.<br> 
+Compared to the baseline year, the expected number of chronic diseases in 2019 is approximately 42,9% lower, indicating a significant decrease.
+
+
+# <span style="font-size:20px;">Cardiovascular Risk in relation to the quantity of Cigarettes smoked and Alcohol consumption</span>
+In this part we wanted to analyse how the number of cigarettes smoked and alcohol consumption can influence or not the cardiovascular risk of each subject.<br><br>
+To do this we analysed the variable `cardiovasc`:<br>
+$$
+\text{cardiovasc}_i = 
+\begin{cases}
+1 & \text{if a doctor has ever calculated the risk} \\
+0 & \text{if the subject is not at risk}
+\end{cases}
+$$<br>
+(i.e. whether a doctor had ever attributed cardiovascular risk to a certain subject).<br><br>
+Always taking as a reference the four variable on which we built the sample (year, ASL, sex and age classes) we first analysed the two risk factors separately, i.e. the number of cigarettes smoked and the amount of alcohol consumed. Subsequently, we graphically represented the distribution of the cardiovascular risk both by region and by ASL.<br>
+Finally we analysed how the two variables mentioned above could be significant for cardiovascular risk.
+```{r subset for Cigarettes and Alcohol}
+Cigarettes_Alcohol = dataset_definitivo %>%
+  dplyr::select(anno:s01_vaccin_ultima,
+                s03_fumo_chiesto:s03_fumo_lavoro,
+                s05_alcool_gg:s05_alcool_sugg_non_so,
+                s07_press_mis:s07_calc_risc,cardiovasc)
+
+# Since there are many observations in the dataset that take the value of -99 (for the answers "I don't know/I don't remember"), we consider them as NA.
+Cigarettes_Alcohol[Cigarettes_Alcohol == -99] = NA
+
+# Change age classes so that year ranges are visible
+Cigarettes_Alcohol$claeta3= ifelse(Cigarettes_Alcohol$claeta3 == 1, '18-34',
+                                   ifelse(Cigarettes_Alcohol$claeta3 == 2, '35-49',
+                                          ifelse(Cigarettes_Alcohol$claeta3 == 3, '50-69', NA)))
+```
+
+## <span style="font-size:20px;">Cigarette Consumption</span>
+As regards cigarette consumption, the analysis focuses first on the **smoking status** between the two reference years and between the two sexes.<br>
+Then we go into specifics by analysing how the **number of cigarettes smoked per day** varies among subjects who are actually smokers, making a comparison not only between sex and year, but also taking age classes as reference.
+
+### <span style="font-size:20px;">Smoking Status</span>
+```{r smoking status}
+# Since for the variable `s03_fumo_att` the observations take the values of t and f, we change them to Yes or No, in order to have a more correct graphic representation 
+Cigarettes_Alcohol$s03_fumo_att = ifelse(Cigarettes_Alcohol$s03_fumo_att == 't', 'Yes',
+                                         ifelse(Cigarettes_Alcohol$s03_fumo_att == 'f', 'No', NA))
+
+# Barplot for current smoking status by year and sex
+ggplot(Cigarettes_Alcohol %>% filter(!is.na(s03_fumo_att)), aes(x = as.factor(anno), fill = s03_fumo_att)) +
+  geom_bar(position = "fill") +
+  facet_wrap(~ sesso_intervistato) +
+  labs(title = "Proportion of Current Smokers by Year and Sex", x = "Year", y = "Proportion", fill = "Smoking Status") +
+  scale_fill_manual(values = c("Yes" = "green", "No" = "red")) +
+  theme_minimal()
+```
+
+```{r contingency table, echo = FALSE}
+prop_table = prop.table(table(Cigarettes_Alcohol$anno, Cigarettes_Alcohol$sesso_intervistato, Cigarettes_Alcohol$s03_fumo_att), margin = c(1,2))
+round(prop_table*100,1)
+```
+
+The bar chart illustrates the proportion of current smokers by year and sex, distinguishing between smokers (*Yes*) and non-smokers (*No*). Each bar represents the relative proportion within each subgroup, with the total summing to 100%.<br>
+From the visual, we observe that in both years, the proportion of smokers is more or less the same among males and females and for both years, suggesting that the prevalence of smoking did not change substantially over the decade in either group. Only in 2009 the number of female smokers (~58,99%) is higher than that of males (~53,66%).<br>
+For **females**, the proportion of smokers appears slightly lower in 2019 compared to 2009, indicating a modest decline. In contrast, among **males**, the proportion remains nearly stable or even shows a slight increase in 2019. Despite public health efforts to reduce smoking, the data suggests that behavioral change was limited over the 10-year-period, especially among men.<br><br>
+A **logistic regression** with the `glm()` function with a binomial family was fitted to investigate the relationship between smoking status and demographic variables. The dependent variable is `s03_fumo_att` and the independent variables are `anno` and `sesso_intervistato`.
+```{r logistic regression smoke status}
+# Modifying the values of the variable `s03_fumo_att` for the creation of the statistical model
+Cigarettes_Alcohol$s03_fumo_att = ifelse(Cigarettes_Alcohol$s03_fumo_att == 'Yes', 1,
+                                         ifelse(Cigarettes_Alcohol$s03_fumo_att == 'No', 0, NA))
+
+Model_Smoke_Status = glm(Cigarettes_Alcohol$s03_fumo_att ~ as.factor(Cigarettes_Alcohol$anno) + as.factor(Cigarettes_Alcohol$sesso_intervistato),
+                  family = binomial,
+                  na.action = na.omit)
+```
+```{r logistic regression smoke status summary, echo = FALSE}
+summary(Model_Smoke_Status)
+```
+
+The model estimates the log-oods of being a smoker based on categorical predictors. The baseline category (intercept) corresponds to females in 2009.<br>
+The **estimated coefficient** for `anno` is **0.02080** with a **p-value** of **0.68662**, indicating that the change in smoking behavior over the ten-year period is not statistically significant, aligning with the contingency table and barplot, which show that smoking proportions remain relatively stable from 2009 to 2019 for both sexes.<br>
+In contrast the **coefficient** for `sesso_intervistato` is **-0.13326** with a **p-value** of **0.00994**, which is statistically significant. This suggest that males have significantly lower odds of being smokers compared to females. This finding is also reflected in the data: in both year, females showh slightly higher smoking proportions than males, as seen in the contingency table (e.g. 59,0% vs. 53,7% in 2009) and the stacked barplot.<br>
+In summary, the logistic regression model confirms that **sex is a significant predictor of smoking status**, while **year is not**.
+
+### <span style="font-size:20px;">Number of Cigarettes smoking per day</span>
+```{r number of cigarettes smoking per day}
+# Since there were some observations with the value -1 ("Less than one cigarette per day") for the variable `s03_fumo_quanto`, we considered them as 0 since a subject either smokes one cigarett or does not smoke at all
+Cigarettes_Alcohol$s03_fumo_quanto[Cigarettes_Alcohol$s03_fumo_quanto == -1] = 0
+
+# Boxplot of the number of cigarettes smoked per day among smokers
+ggplot(Cigarettes_Alcohol %>% filter(s03_fumo_att == 1, !is.na(s03_fumo_quanto)),
+       aes(x = as.factor(anno), y = s03_fumo_quanto, fill = as.factor(anno))) +
+  geom_boxplot(outlier.color = "red") +
+  facet_grid(claeta3 ~ sesso_intervistato) +
+  labs(title = "Number of Cigarettes Smoked per Day by Year, Sex and Age Class", x = "Year", y = "Cigarettes per Day") +
+  scale_fill_manual(name = "Year", values = c("2009" = "#74a9cf", "2019" = "#a50f15")) +
+  theme_minimal()
+```
+
+The boxplot illustrates the distribution of the number of cigarettes smoked per day among current smokers, stratified by year, sex and age classes.<br>
+We can see that:<br>
+• **Gender Differences**: Male smokers higher daily cigarettes consumption than females in the same age group and year. This trend is evident in all three age classes;<br>
+• **Age Differences**: Cigarette consumption increase with age. The 50-69 age group shows the highest median and interquartile ranges, followed by the 35-49 group. The youngest group (18-34) exhibits the lowest values overall. This indicates a clear positive association between age and smoking identity;<br>
+• **Temporal Comparison**: When comparing 2009 to 2019, there appears to be a slight reduction or stabilization in the number of cigarettes smoked per day in some subgroups, though the differences are not substantial. The distribution remain similar across the two years, suggesting no drastic change in smoking intensity during the ten-year span;<br>
+• **Outliers**: Several outliers are visible, especially in the older age groups, indicating that a small subset of smokers report very high daily cigarettes use. These outliers contribute to the overdispersion.<br><br>
+For the creation of the statistical model, since the variable `s03_fumo_quanto` represents a count (number of cigarettes smoked per day) among smokers (`s03_fumo_att == 1`), it is essential to first analyse the model to be used.<br>
+Since Poisson models assume that:<br>
+**mean = variance**<br>
+It becomes essential then to analyse this equality in such a way as to understand if the variance is greater than the mean (**overdispersion**) or the residual of the Poisson model seem large and poorly distributed. If so, then, the Poisson model is not appropriate and it becomes more correct to use the Negative Binomial.<br><br>
+We have to confront the two models:
+```{r confront models smoke number}
+Model_Smoke_Number_Poisson = glm(
+  s03_fumo_quanto ~ as.factor(anno) + as.factor(sesso_intervistato) + as.factor(claeta3),
+  family = poisson(),
+  data = Cigarettes_Alcohol %>% filter(s03_fumo_att == 1, !is.na(s03_fumo_quanto))
+)
+
+Model_Smoke_Number_NB = glm.nb(
+  s03_fumo_quanto ~ as.factor(anno) + as.factor(sesso_intervistato) + as.factor(claeta3),
+  data = Cigarettes_Alcohol %>% filter(s03_fumo_att == 1, !is.na(s03_fumo_quanto))
+)
+```
+```{r dispersion calculation smoke number}
+# Dispersion Calculation
+dispersion = sum(residuals(Model_Smoke_Number_Poisson, type = "pearson")^2) / df.residual(Model_Smoke_Number_Poisson)
+dispersion
+```
+```{r AIC calculation smoke number}
+# AIC Caluclation
+AIC(Model_Smoke_Number_Poisson, Model_Smoke_Number_NB)
+```
+
+The overdisperion is greater than 1 (**variance > mean**) and the Negative Binomial has a lower AIC.<br>
+So we use the Negative Binomial Model.
+```{r negative binomial smoke number summary, echo = FALSE}
+summary(Model_Smoke_Number_NB)
+```
+
+A **Negative Binomial Regression model** was fitted for the number of cigarettes smoked per day among current smokers, appropriate for overdispersed count data. The dependent variables is `s03_fumo_quanto`, and the predictors include `anno`, `sesso_intervistato`, and `claeta3`.<br>
+The model output confirms that all predictors are statistically significant. Specifically:<br>
+• The negative coefficient for `anno == 2019` (**Estimate = -0.13556, p < 0.001**) indicates a significant reduction in the number of cigarettes smoked per day in 2019 compared to 2009;<br>
+• Males have a significant higher cigarettes consumption than females, as shown by the positive coefficient for `sesso_intervistato == M` (**Estimate = 0.28115, p < 0.001**);<br>
+• Age classes also have a significant impact individuals aged **35-49** abd **50-69** smoke more on average than those aged **18-34**, with increasing coefficients by age group.<br>
+These findings are consistent with the boxplot visualization, which displays the distribution of cigarette consumption by year, sex and age class.<br>
+The result provide strong statistical and visual evidence that the cigarette consumption differs significantly by year, gender and age.
+
+## <span style="font-size:20px;">Alcohol Consumption</span>
+For Alcohol consumption we focus on **how many days did the subject drink at least one unit of alcoholic beverage during the last 30 days** (by *unit of alcoholic beverage* we mean a glass of wine, or a can of beer or a shot of liquor) between the two reference years and between the two sexes.<br>
+Then we analyse how, on drinking days, the **average quantities of units of alcoholic beverages in a day** vary, making a comparison not only between sex and year, but also taking age classes as reference.
+
+### <span style="font-size:20px;">Alcohol Consumption during the last 30 days</span>
+```{r alcohol consumption during the last 30 days}
+# Histogram of number of days alcohol was consumed in the past 30 days, grouped by year and sex
+ggplot(Cigarettes_Alcohol %>% filter(!is.na(s05_alcool_gg)),
+       aes(x = s05_alcool_gg, fill = as.factor(anno))) +
+  geom_histogram(position = "dodge", binwidth = 1, color = "black") +
+  facet_wrap(~ sesso_intervistato) +
+  labs(title = "Alcohol Consumption", x = "Alcohol Consumption (Days)", y = "Frequency", fill = "Year") +
+  theme_minimal()
+```
+
+The histogram illustrates the distribution of alcohol consumption over the past 30 days, disaggregated by sex and year. The x-axis represents the number of days on which alcohol was consumed (from 0 to 30), while the y-axis shows the frequency of individuals reporting each level of consumption.<br>
+Several key patters emerge from the visualization:<br>
+• **High prevalence of abstinence**: For both males and females, the most common response is **0 days**, indicating that a large portion of individual reported no alcohol consumption in the past months. This is particularly pronounced among females in both years;<br>
+• **Gender differences**: Males report more frequent alcohol consumption than females. Compared to the female group, male respondents show higher frequencies across most non-zero consumption levels, especially between **5 to 20 days**, and have a more even spread across the range of drinking days;<br>
+• **Extreme values at 30 days**: There is a visible spike at 30 days, especially for males, indicating a subgroup of individuals reporting **daily alcohol consumption**. This pattern is present in both 2009 and 2019, though slightly more pronounced in 2009;<br>
+• **Temporal trend**: While the overall distribution shapes remain similar between 2009 and 2019, there is a **slight reduction in the frequency of high consumption days in 2019**, particularly for males. Conversely, the proportion of abstainers (0 days) appears to have increased slightly in 2019 among females, suggesting a potential improvement in health related behaviors in that group.<br>
+Overall, looking at the graph the first thing we can notice are two substantial situations: either a subject drinks daily, or he or she almost never drinks.<br><br>
+For **statistical model**, since it is a count, we need to understand which model between Poisson and Negative Binomial is the most appropriate to use, as for the number of cigarettes smoked.
+```{r confront models alochol consumption during the last 30 days}
+Model_Alcohol_Days_Poisson = glm(
+  Cigarettes_Alcohol$s05_alcool_gg ~ as.factor(Cigarettes_Alcohol$anno) + as.factor(Cigarettes_Alcohol$sesso_intervistato),
+  family = poisson(),
+  na.action = na.omit
+)
+
+Model_Alcohol_Days_NB = glm.nb(
+  Cigarettes_Alcohol$s05_alcool_gg ~ as.factor(Cigarettes_Alcohol$anno) + as.factor(Cigarettes_Alcohol$sesso_intervistato),
+  na.action = na.omit
+)
+```
+```{r dispersion calculation alochol consumption during the last 30 days}
+# Dispersion Calculation
+dispersion = sum(residuals(Model_Alcohol_Days_Poisson, type = "pearson")^2) / df.residual(Model_Alcohol_Days_Poisson)
+dispersion
+```
+```{r AIC calculation alochol consumption during the last 30 days}
+# AIC Caluclation
+AIC(Model_Alcohol_Days_Poisson, Model_Alcohol_Days_NB)
+```
+
+The overdisperion is greater than 1 (**variance > mean**) and the Negative Binomial has a lower AIC.<br>
+So we use the Negative Binomial Model.
+```{r negative binomial alochol consumption during the last 30 days summary, echo = FALSE}
+summary(Model_Alcohol_Days_NB)
+```
+
+A **Negative Binomial Regression model** was fitted using the number of days alcohol was consumed in the past 30 days(`s05_alcoo_gg`) as the outcome variable. The predictors included `anno` and `sesso_intervistato`, both treated as categorical variables.<br>
+The regression results indicate the following:<br>
+• The **intercept** (Estimate = 1.67329) represents the log-mean number of alcohol consumption days in 2009 among females;<br>
+• The coefficient for `anno == 2019` is **negative and statistically significant** (Estimate = -0.28276, p < 0.001), suggesting that, holding sex constant, alcohol consumption significantly **decreased** in 2019 compared to 2009;<br>
+• The coefficient for `sesso_intervistato == M` is **positive and highly significant** (Estimate = 0.88252, p < 0.001), indicating that men consume alcohol on significantly more days than women.<br>
+These findings are visually supported by the histogram above.<br>
+In conclusion, the model provides strong statistical evidence of a **significant reduction in alcohol consumption over time**, as well as **clear gender differences**, with males consuming alcohol more frequently than females. These results are reinforced by the graphical distribution, supporting the robustness of the model's conclusion.
+
+### <span style="font-size:20px;">Units of Alcoholic beverages on drinking days</span>
+The plot below is a **combined violin and boxplot** and it was chosen because, in addition to all the features of the boxplot, the violin shape provides a smoothed density estimate of the data, allowing us to visualize asymmetries, skewness and multimodality within each group.
+```{r units of alcoholic beverages}
+# Boxplot of alcohol units consumed on drinking days, stratified by year, sex and age class
+ggplot(Cigarettes_Alcohol %>% filter(!is.na(s05_alcool_quanto)),
+       aes(x = as.factor(anno), y = s05_alcool_quanto, fill = as.factor(anno))) +
+  geom_violin(alpha = 0.4, trim = TRUE) +
+  geom_boxplot(width = 0.1, outlier.size = 0.8, outlier.color = "red") +
+  facet_grid(claeta3 ~ sesso_intervistato) +
+  scale_y_log10() +
+  labs(title = "Alcohol Units Consumed on Drinking Days by Year, Sex and Age Class", x = "Year", y = "Alcohol Units per Drinking Day") +
+  scale_fill_manual(name = "Year", values = c("2009" = "#74a9cf", "2019" = "#a50f15"))+
+  theme_minimal()
+```
+
+The plot shows the distribution of alcohol units consumed pre driking day, stratified by year, sex and age class.<br>
+We can see that:<br>
+• **Gender differences**: Across all age classes and years, males consistently consume more alcohol units per drinking day than females. This is evident in both the **higher medians** and **broader upper tails** of the distribution for men;<br>
+• **Age effect**: Within both genders, **alcohol consumption per drinking day tends to increase with age**. The age group 50-69 often shows **wider distributions** and more extreme outliers, especially among males. However, differences are visible but not drastic; the density peaks tend to be similar across age classes;<br>
+• **Temporal trends**: Comparing 2009 to 2019, the distribution shapes remain relatively similar for each subgroup. However, in some female groups (e.g. 35-49), the median consumption in 2009 **appears slightly higher** than 2019. For males, changes over time are more subtle, with similar median values but potential shifts in the tails of the distribution;<br>
+• **Outliers and heavy drinking**: A number of extreme values are present across all panels, particularly in older age groups. These suggest the presence of **heavy drinkers** consuming large amounts of alcohol per occasion.<br>
+While frequency of drinking (days per month) may have declined over time, the **amount consumed per drinking day remains high**, particularly among older males. This raises important considerations from a public health perspective: even if drinking occurs less often, **excessive drinking behavior may still persist** in specific subgroups.<br><br>
+Comparison between Poisson and Negative Binomial:
+```{r confront models alochol quantity}
+Model_Alcohol_Quantity_Poisson = glm(
+  Cigarettes_Alcohol$s05_alcool_quanto ~ as.factor(Cigarettes_Alcohol$anno) + as.factor(Cigarettes_Alcohol$sesso_intervistato) + as.factor(Cigarettes_Alcohol$claeta3),
+  family = poisson(),
+  Cigarettes_Alcohol %>% filter(!is.na(s05_alcool_quanto), s05_alcool_quanto > 0)
+)
+
+Model_Alcohol_Quantity_NB = glm.nb(
+  Cigarettes_Alcohol$s05_alcool_quanto ~ as.factor(Cigarettes_Alcohol$anno) + as.factor(Cigarettes_Alcohol$sesso_intervistato) + as.factor(Cigarettes_Alcohol$claeta3),
+  Cigarettes_Alcohol %>% filter(!is.na(s05_alcool_quanto), s05_alcool_quanto > 0)
+)
+```
+```{r dispersion calculation alochol quantity}
+# Dispersion Calculation
+dispersion = sum(residuals(Model_Alcohol_Quantity_Poisson, type = "pearson")^2) / df.residual(Model_Alcohol_Quantity_Poisson)
+dispersion
+```
+```{r AIC calculation alochol quantity}
+# AIC Calculation
+AIC(Model_Alcohol_Quantity_Poisson, Model_Alcohol_Quantity_NB)
+```
+
+The overdisperion is a little bigger than 1 (**variance > mean**) and the Negative Binomial has an AIC slightly lower than the Poisson.<br>
+So we use the Negative Binomial Model.
+```{r negative binomial alochol quantity summary, echo = FALSE}
+summary(Model_Alcohol_Quantity_NB)
+```
+
+A **Negative Binomial Regression model** was fitted using the number of alcohol units consumed per drinking day (`s05_alcool_quanto`) as the dependent variable. The predictors included `anno`, `sesso_intervistato` and `claeta3` as categorical variables. The model was estimated on individuals who reported consuming alcohol at least one in the past 30 days (i.e., `s05_acool_quanto > 0`).<br>
+The regression results indicate the following:<br>
+• The **intercept** (Estimate = 0.33456) represents the expected log-count of alcohol units for females aged 18-34 in 2009;<br>
+• The **year 2019** coefficient is negative and statistically significant (Estimate = -0.06418,p < 0.001), indicating a decrease in the number of alcohol units consumed per drinking day compared to 2009, holding other variables constant;<br>
+• The coefficient for **males** is positive and highly significant (Estimate = 0.29509, p < 0.001), suggesting that men consume more alcohol per drinking day than women;<br>
+• Compared to the 18-34 age group, the 35-49 shows a **significant decrease** in consumption (Estimate = -0.06441, p < 0.05), while the 50-69 age group does not differ significantly from the youngest category.<br>
+The Negative Binomial regression confirms that men consume more alcohol per drinking day than women, and that overall consumption intensity has declined from 2009 to 2019. The visualization reinforce these findings, highlighting persistent gender differences and a skewed pattern of drinking behavior concentrated in lower consumption ranges, with some evidence of heavy use in a similar subset of the population.
+
+## <span style="font-size:20px;">Cardiovascular Risk</span>
+For the Cardiovascular risk, before going to understand how and if smoking and alcohol can impact, it is interesting to analyse cardiovascular risk not only among the reference variables (sex, year and age classes), but also at the territorial level with regards to **regions** and **ASL**.
+
+### <span style="font-size:20px;">Cardiovascular Risk in the population</span>
+```{r creating heatmap cardiovascular risk, echo = FALSE}
+heatmap_cardiovasc = Cigarettes_Alcohol %>% filter(!is.na(cardiovasc)) %>% group_by(anno, sesso_intervistato, claeta3) %>%
+  summarise(risk_rate = mean(cardiovasc == 1))
+
+heatmap_cardiovasc$anno = as.factor(heatmap_cardiovasc$anno)
+heatmap_cardiovasc$sesso_intervistato = as.factor(heatmap_cardiovasc$sesso_intervistato)
+heatmap_cardiovasc$claeta3 = as.factor(heatmap_cardiovasc$claeta3)
+```
+```{r heatmap cardiovascular risk and logistic regression model}
+# Heatmap for cardiovascular risk
+ggplot(heatmap_cardiovasc, aes(x = anno, y = claeta3, fill = risk_rate))+
+  geom_tile(color = "white") +
+  facet_wrap(~ sesso_intervistato)+
+  scale_fill_gradient(low = "#c6dbef", high = "#08306b", name = "Risk Rate") +
+  labs(title = "Cardiovascular Risk Heatmap by Year, Age Class and Sex", x = "Year", y = "Age Class") +
+  theme_minimal()
+
+# Logistic regression model for cardiovascular risk calculation
+Model_Calc_Risk = glm(Cigarettes_Alcohol$cardiovasc ~ as.factor(Cigarettes_Alcohol$anno) + 
+                        as.factor(Cigarettes_Alcohol$sesso_intervistato) + 
+                        as.factor(Cigarettes_Alcohol$claeta3),
+                      family = binomial,
+                      na.action = na.omit)
+summary(Model_Calc_Risk)
+```
+
+To investigate cardiovascular risk in the population , a **binary logistic regression model** was fitted using the variable `cardiovasc` as the outcome (indicating presence or absence of cardiovascular risk). The predictors included `anno`, `sesso`, `claeta3` as categorical variables. The heatmap visually supports the statistical results, showing darker shades (higher risk rates) concentrated among **older individuals** and **males**, particularly in the **50-69 age group**, in both years.<br>
+The model confirms that:<br>
+• **Age** is the strongest predictor of cardiovascular risk: individuals aged 35-49 show a significant increase in risk compared to those aged 18-34 (Estimate = 0.68330, p = 0.000433). The 50-69 age group shows an even stronger effect (Estimate = 2.224988, p < 0.001), which aligns with the **darkest cells** in the heatmap;<br>
+• **Sex** is another key factor: males are significantly more likely to be at risk than females (Estimate = 0.34772, p < 0.001). This is visually reflected in the heatmap, where all male groups display **darker blue tones** than their female counterparts;<br>
+• **Year** is **not statistically significant predictor** (Estimate = 0.12744, p = 0.134413): the heatmap supports this findings, showing **very similar color intensity** for the same age and sex groups across the two years, indicating **no substantial change in cardiovascular risk over time**.<br>
+• The **intercepct** (Estimate = -4.69652) represents the baseline log-odds of cardiovascular risk for females aged 18-34 in 2009, the group with the **lighest color** in the heatmap, confirming **very low risk** in that subgroup.
+
+### <span style="font-size:20px;">Cardiovascular Risk by Regions and ASL</span>
+For the analysis of cardiovascular risk at territorial level, for the **regions** we created a map of Italy, while for the **ASL** we selected only the **15 ASL** with the highest cardiovascular risk cases.
+```{r creating the map for cardiovascular risk}
+# Download Italian regional boundaries (level 1 = regions)
+# This loads official administrative boundaries directly into R
+Cigarettes_Alcohol_copy = Cigarettes_Alcohol
+# Since Trentino and Alto Adige were indicated as two separate regions in the PASSI, to create the map we created a copy of the dataset in which we identified the two regions in a single region (Trentino-Alto Adige)
+Cigarettes_Alcohol_copy$regione = ifelse(Cigarettes_Alcohol_copy$regione %in% c("Trentino", "Alto Adige"), "Trentino-Alto Adige", Cigarettes_Alcohol_copy$regione)
+
+italy_regions = geodata::gadm(country = "ITA", level = 1, path = tempdir())
+italy_regions = st_as_sf(italy_regions)
+# Prepare cardiovascular risk data by region and year
+# Replace 'regione' with the actual column name in the dataset for region
+cardio_2009 = Cigarettes_Alcohol_copy %>% 
+  filter(anno == 2009, !is.na(cardiovasc)) %>%
+  group_by(regione) %>%
+  summarise(risk_rate_2009 = mean(cardiovasc == 1))
+cardio_2019 = Cigarettes_Alcohol_copy %>% 
+  filter(anno == 2019, !is.na(cardiovasc)) %>%
+  group_by(regione) %>%
+  summarise(risk_rate_2019 = mean(cardiovasc == 1))
+# Match and join spatial and statistical data
+# Change of some names of the regions that were different
+italy_regions$NAME_1[italy_regions$NAME_1 == "Valle d'Aosta"] = "Valle D'Aosta"
+italy_regions$NAME_1[italy_regions$NAME_1 == "Apulia"] = "Puglia"
+italy_regions$NAME_1[italy_regions$NAME_1 == "Sicily"] = "Sicilia"
+italy_regions$NAME_1[italy_regions$NAME_1 == "Friuli-Venezia Giulia"] = "Friuli Venezia Giulia"
+
+italy_map_2009 = italy_regions %>% left_join(cardio_2009, by = c("NAME_1" = "regione"))
+italy_map_2019 = italy_regions %>% left_join(cardio_2019, by = c("NAME_1" = "regione"))
+```
+```{r plotting the map for cardiovascular risk}
+# 2009 Year
+ggplot(data = italy_map_2009) +
+  geom_sf(aes(fill = risk_rate_2009)) +
+  scale_fill_gradient(low = "#c6dbef", high = "#08306b", name = "Cardio Risk Rate", na.value = "grey90") +
+  labs(title = "Cardiovascular Risk Prevalence by Region (2009)") +
+  theme_minimal()
+# 2019 Year
+ggplot(data = italy_map_2019) +
+  geom_sf(aes(fill = risk_rate_2019)) +
+  scale_fill_gradient(low = "#c6dbef", high = "#08306b", name = "Cardio Risk Rate", na.value = "grey90") +
+  labs(title = "Cardiovascular Risk Prevalence by Region (2019)") +
+  theme_minimal()
+```
+```{r comune_intervistato uppercase, echo = FALSE}
+# Transform the variable `comune_intervistato` into uppercase
+Cigarettes_Alcohol$comune_intervistato = toupper(Cigarettes_Alcohol$comune_intervistato)
+```
+```{r plotting cardiovascular risk by ASL}
+# 2009 Year
+ggplot(Cigarettes_Alcohol %>% filter(anno == 2009, cardiovasc == 1) %>%
+         group_by(asl, comune_intervistato) %>%
+         summarise(cases = n(), comune_label = first(comune_intervistato), .groups = "drop") %>%
+         arrange(desc(cases)) %>%
+         slice_head(n = 15),
+       aes(x = reorder(paste0(comune_label, " (", asl, ")"), cases), y = cases, fill = cases)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  scale_fill_gradient(low = "#c6dbef", high = "#08306b") +
+  labs(title = "Top 15 ASL by Cardiovascular Risk Cases - 2009", x = "Municipality (from ASL)", y = "Number of Cases", fill = "Cases") +
+  theme_minimal()
+# 2019 Year
+ggplot(Cigarettes_Alcohol %>% filter(anno == 2019, cardiovasc == 1) %>%
+         group_by(asl, comune_intervistato) %>%
+         summarise(cases = n(), comune_label = first(comune_intervistato), .groups = "drop") %>%
+         arrange(desc(cases)) %>%
+         slice_head(n = 15),
+       aes(x = reorder(paste0(comune_label, " (", asl, ")"), cases), y = cases, fill = cases)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  scale_fill_gradient(low = "#c6dbef", high = "#08306b") +
+  labs(title = "Top 15 ASL by Cardiovascular Risk Cases - 2019", x = "Municipality (from ASL)", y = "Number of Cases", fill = "Cases") +
+  theme_minimal()
+```
+
+In 2009, the highest regional cardiovascular risk is concentrated in **Molise**, clearly visible through the darkest shade on the map. Other regions such as **Campania**, **Sicilia** and some areas in the **north-east** (e.g. Friuli-Venezia Giulia) also show moderately elevated risk levels.<br>
+By contrast, in 2019, the regional pattern changes notably. **Sardinia** and **Valle d'Aosta** emerge as the regions with the highest risk prevalence, while other regions that had higher risk in 2009 - like Molise - exhibit lighter shades, suggesting a relative decline in risk. This suggest a **geographic shift** in cardiovascular risk between the two years, from **central-southern** Italy in 2009 to **more peripheral regions** (e.g. islands and Alpine regions) in 2019.<br>
+However, regional data can sometimes mask local dynamics, which is why the ASL-level plots are essential for a more granular view.<br>
+In 2009, the bar chart shows that **Rome (ASL 120104)** recorded the highest number of cardiovascular cases, followed by ASLs in **Venice**, **Naples**, **Mirandola** and **Trieste**, highlighting large urban centers and some Northern municipalities as hotspots.<br>
+In 2019, while **Rome** remains prominent, it is **Milazzo (ASL 190105)** that tops the chart, followed by ASLs in **Trieste**, **Terni**, **Sansepolcro** and **Aosta**. These results indicate a broader dispersion of cardiovascular risk cases, including mid-sized and smaller municipalities in 2019 compared to a more urban-centric distribution in 2009.<br>
+Overall, the combined regional and ASL analyses provide a **comprehensive territorial perspective**, suggesting that public health policies should be tailored both regionally and locally, taking into account the **emergence of new high-risk areas**.
+
+## <span style="font-size:20px;">Impact of Cigarettes and Alcohol</span>
+For the final part of this chapter, after having individually analysed risk factor such as smoking and alcohol, and after having analysed cardiovascular risk at a territorial level, it is important to focus on how the factors just mentioned influence cardiovascular risk, thus understanding, from a statistical point of view, whether they are significant or no.<br><br>
+We fitted a **Generalized Linear Mixed Model (GLMM)** using the `glmer()` function and with the following fixed effects:<br>
+• Smoking status (`s03_fumo_att`) and year(`anno`), along with their interaction, to assess how the effect of smoking on cardiovascular risk changes over time;<br>
+• Alcohol consumption (`s05_alcool_gg`) and its interaction with year, to evaluate temporal changes in the impact of alcohol use;<br>
+• Sex (`sesso_intervistato`) and age class (`claeta3`) as demographic covariates that may could influence cardiovascular risk.
+The model also includes a random intercept for region or ASL (*We need to see which of the two variables is more significant*), in order to capture the hierarchical structure of the data.<br>
+Moreover, the model uses the `"bobyqa" optimizer` to ensure convergence, which is often necessary for complex models with random effects.<br>
+In summary, this is a multilevel logistic regression model that estimates the impact of lifestyle factors (smoking and alcohol use), demographic (sex and age), and temporal change (year) on cardiovascular risk.
+```{r choose of ASL or region model}
+# Model with ASL as random intercept
+Model_Card_ASL = glmer(cardiovasc ~
+                    as.factor(s03_fumo_att) * as.factor(anno) +             
+                    s05_alcool_gg * as.factor(anno)+                        
+                    as.factor(sesso_intervistato) +                         
+                    as.factor(claeta3) +                                   
+                    (1 | asl),                                              
+                  data = Cigarettes_Alcohol,
+                  family = binomial,
+                  control = glmerControl(optimizer = "bobyqa"))
+
+# Model with Region as random intercept
+Model_Card_Regione = glmer(cardiovasc ~
+                    as.factor(s03_fumo_att) * as.factor(anno) +             
+                    s05_alcool_gg * as.factor(anno)+                        
+                    as.factor(sesso_intervistato) +                         
+                    as.factor(claeta3) +                                    
+                    (1 | regione),                                              
+                  data = Cigarettes_Alcohol,
+                  family = binomial,
+                  control = glmerControl(optimizer = "bobyqa"))
+
+# Let's compare the two models
+anova(Model_Card_ASL, Model_Card_Regione)
+```
+
+Although both models present very similar values (comparing AIC and BIC), the one with region as a random effect captures the structure of the data better than the one based on ASL.
+```{r random intercept ASL or region cardiovascular}
+parameters::random_parameters(Model_Card_ASL)
+parameters::random_parameters(Model_Card_Regione)
+```
+
+A further comparison confirms the decision taken previously (also in this case the two models present a very low variance of the random effect, however we take the model that has the region as a random effect).
+```{r GLMM with random effect by regions, echo = FALSE}
+summary(Model_Card_Regione)
+sjPlot::plot_model(Model_Card_Regione, show.values = TRUE,show.p=TRUE)
+```
+
+Looking at the statistical model output and the related graph what we can basically say is that the variables that are most significant with regard to cardiovascular risk are, mainly the **age classes** (as seen previously in previous models): individuals aged 35-49 have higher odds of cardiovascular risk (Estimate = 0.733787, p = 0.0074), with about twice the probability of having cardiovascular risk compared to younger people; those aged 50-69 have the highest risk (Estimate = 2.047836, p < 0.001), confirming the expected age-related increase in cardiovascular vulnerability with a 675% higher probability, so almost 8 times as much.<br>
+Interaction between smoking and year is not statistically significant (p = 0.1787), suggesting that the effect of smoking on cardiovascular risk did not differ meaningfully between 2009 and 2019. Similarly, the interaction between alcohol and year is also not significant (p = 0.6149), implying a stable effect over time.<br><br>
+But what is most surprising, as we can observe in the model output and also in the graph, is the fact that the two factors we were interested in (smoking and alcohol) **do not seem to be significant** for cardiovascular risk.<br>
+Specifically, as regards **alcohol consumption**, the latter does not appear significant (Estimate = -0.002640, p = 0.6558). However, reasoning, this result may make sense, since if a subject is in an optimal state of health then he or she will be more likely to consume alcohol, while a subject who has been notified by a doctor of a cardiovascular risk **will be less likely to drink**, knowing that in general alcoholic beverages are dangerous to health, particularly to the cardiovascular system.<br>
+For **cigarettes**, however the result creates a bit of confusion, since the variables is significant (p < 0.001), but it seems that non-smokers have a higher cardiovascular risk (Estimate = -0.876952), while smokers have a lower cardiovascular risk. Specifically, smokers had an approximately 58% lower probability of having cardiovascular risk compared to non-smokers. For this case there can be two interpretations: the first is based on the same reasoning used above for alcohol consumption (i.e. that if a subject tends to smoke it is because he or she is in good health or has never been notified of a cardiovascular risk), the second can be an interpretation on the variable subject to analysis.<br>
+The variable we used for smoking status is `s03_fumo_att`, which answers the following question: *Do you currently smoke cigarettes?* However, this question only considers the present, but does not take into account the fact that a subject may have **been a smoker in the past** and currently does not smoke. To better understand, therefore, whether smoking actually impacts cardiovascular risk or not, we must also consider a subject's past, analysing the variables `s03_fumo`:<br>
+$$
+\text{s03_fumo}_i = 
+\begin{cases}
+1 & \text{if the subject, in his entire life, has smoked at least 100 cigarettes in total (5 packs of 20 sigarettes)} \\
+0 & \text{if the subject has never smoked them}
+\end{cases}
+$$
+```{r new variables of smoking, include = FALSE}
+Cigarettes_Alcohol$s03_fumo = ifelse(Cigarettes_Alcohol$s03_fumo == 1, 1,
+                                         ifelse(Cigarettes_Alcohol$s03_fumo == 2, 0, NA))
+```
+```{r chi-square test smoking}
+chisq.test(table(Cigarettes_Alcohol$s03_fumo, Cigarettes_Alcohol$cardiovasc))
+```
+
+The chi-square test indicates a statistically significant association between smoking history and cardiovascular risk (X-squared = 32.353, p < 0.001), suggesting that smoking history appears to be linked to an increased likelihood of cardiovascular issues. Let's fit a statistical model in order to see if it is actually true.
+```{r final model for smoking history and cardiovascular risk}
+# Bar chart for Cardiovascular risk by Smoking history
+ggplot(Cigarettes_Alcohol %>% filter(!is.na(s03_fumo), !is.na(cardiovasc)) %>% group_by(anno, s03_fumo) %>% summarise(risk_rate = mean(cardiovasc == 1)*100, .groups = "drop"),
+       aes(x = as.factor(s03_fumo), y = risk_rate, fill = as.factor(s03_fumo))) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~ anno) +
+  scale_fill_manual(values = c("0" = "#1f77b4", "1" = "#ff7f0e")) +
+  labs(title = "Cardiovascular Risk by Smoking History in 2009 and 2019", x = "Smoker (0 = No, 1 = Yes)", y = "Percentage with Cardiovascular Risk (%)", fill = "Smoker") +
+  theme_minimal()
+
+# Generalized Linear Mixed Model with smoking history
+Model_Card_Regione_2 = glmer(cardiovasc ~
+                    as.factor(s03_fumo) * as.factor(anno) +             
+                    s05_alcool_gg * as.factor(anno)+                        
+                    as.factor(sesso_intervistato) +                         
+                    as.factor(claeta3) +                                    
+                    (1 | regione),                                              
+                  data = Cigarettes_Alcohol,
+                  family = binomial,
+                  control = glmerControl(optimizer = "bobyqa"))
+summary(Model_Card_Regione_2)
+```
+```{r additional information for the final model with smoking history}
+# Plot the results
+sjPlot::plot_model(Model_Card_Regione_2, show.values = TRUE,show.p=TRUE)
+sjPlot::plot_model(Model_Card_Regione_2, type = "re")
+```
+
+This statistical model is like the older one but we use `s03_fumo` instead of `s03_fumo_att`.<br>
+If we look at the output this time we can see that **the interaction between smoking status and year 2019 is statistically significant** (p-value = 0.009570), indicating that in 2019 smokers have a 58% higher cardiovascular risk than non-smokers. This suggests that the effect of smoking on cardiovascular risk has changed between 2009 and 2019. Specifically, in 2019, being a smoker significantly increased the probability of having a cardiovascular condition, more than in 2009. However, the main effect of smoking (`s03_fumo`) is not statistically significant (p = 0.273456), suggesting that smoking alone, in the reference year (2009), is not associated with a significantly higher cardiovascular risk.<br>
+This result align with the **bar plot**, which visually shows that in both years, smokers exhibit a higher percentage of cardiovascular risk compared to non-smokers, with a more notable gap in 2019.<br>
+The main effect of alcohol consumption is still not significant, while age classes (35-49 and 50-69) and male gender both still remain strong positive predictors of cardiovascular risk.<br>
+In conclusion, although smoking was not a significant predictor of cardiovascular risk in 2009, its impact became statistically significant in 2019, playing a significant role in cardiovascular risk, with the effect being moderated by demographic and behavioral covariates.<br><br>
+Public health interventions targeting smoking-related cardiovascular risk may need to be more emphasized in recent years, particularly given the strengthening of this association over time.<br>
+However, in recent years we have increasingly seen government actions aimed to reducing smoking habits, especially among young people who are starting to smoke at an increasingly earlier age. We can cite, for example, the various increases in excise duties on tobacco. In 2022, the average price of a pack of cigarettes increased by 17-18% compared to 2015 (from around €4,50 to over €6,20). However, with the 2025 Italy Budget Law, excise duties on tobacco were further increased, which will lead to an increase in average prices of around 20/30 cents per pack.
+
+
+# <span style="font-size:20px;">Hypertension Conditions related to Physical Activity</span>
+This part examines the changes in intense and moderate physical activity, as well as the prevalence of hypertension conditions in Italy in the years 2009 and 2019, highlighting the most significant differences between the two periods.
+
+
+## <span style="font-size:20px;">Intense Physical Analysis</span>
+### <span style="font-size:20px;">Regional distribution of Intense Physical Activity</span>
+```{r stacked-barplot-intense-2009}
+# Filter for valid physical intense activity
+dataset_att_intens_year_reg = dataset_definitivo[!is.na(dataset_definitivo$s02_tlib_attiv_inte) &
+                                                    dataset_definitivo$s02_tlib_attiv_inte %in% c(1, 2, -99) &
+                                                    !is.na(dataset_definitivo$anno) &
+                                                    !is.na(dataset_definitivo$regione), 
+                                                  c("s02_tlib_attiv_inte", "anno", "regione")]
+
+# Add factor labels
+dataset_att_intens_year_reg$attivita_label = factor(dataset_att_intens_year_reg$s02_tlib_attiv_inte,
+                                                     levels = c(1, 2, -99),
+                                                     labels = c("Yes (Intense Activity)", 
+                                                                "No (No Intense Activity)", 
+                                                                "I don't know/I don't remember"))
+
+# Normalized stacked bar chart on intense physical activity in 2008
+ggplot(subset(dataset_att_intens_year_reg, anno == 2009), 
+       aes(x = regione, fill = attivita_label)) +
+  geom_bar(position = "fill", color = "white") +
+  scale_fill_manual(values = c(
+    "Yes (Intense Activity)" = "blue",     
+    "No (No Intense Activity)" = "green", 
+    "I don't know/I don't remember" = "black"  )) +
+  labs(title = "Intense physical activity by region - Year 2009",
+       x = "Region",
+       y = "Number of people",
+       fill = "Answers") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The chart shows that in most regions, the **majority of individuals report not engaging in intense physical activity**, as reflected by the **predominance of green bars**. The **highest rates of vigorous activity** are observed in regions such as **Alto Adige**, **Lombardia**, **Trentino**, and **Calabria**, while the **lowest levels** are recorded in **Campania**, **Abruzzo**, **Sicilia**, and **Veneto**. Additionally, the proportion of respondents who selected **I don't know /I don't remember** is minimal in all regions, suggesting a high level of awareness regarding one’s physical activity habits.<br><br>
+Now let's look at **2019** for a comparison:
+```{r barplot-intense-2019}
+# Normalized stacked bar chart on intense physical activity in 2019
+ggplot(subset(dataset_att_intens_year_reg, anno == 2019), 
+       aes(x = regione, fill = attivita_label)) +
+  geom_bar(position = "fill", color = "white") +
+  scale_fill_manual(values = c(
+    "Yes (Intense Activity)" = "blue",     
+    "No (No Intense Activity)" = "green", 
+    "I don't know/I don't remember" = "black"  )) +
+  labs(title = "Intense physical activity by region - Year 2019",
+       x = "Region",
+       y = "Number of people",
+       fill = "Answers") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The chart displays a pattern consistent with the previous year: in most regions, a **large share of the population reports not participating in intense physical activity**, as shown by the dominant green bars. The **highest levels of vigorous activity** are observed in regions such as **Alto Adige**, **Friuli Venezia Giulia**, **Liguria**, and **Valle d'Aosta**, while the **lowest levels** are recorded in **Campania** and **Emilia-Romagna**. As in 2009, the proportion of **I don’t know /I don’t remember"** responses remains very low across all regions.
+
+
+### <span style="font-size:20px;">Overall percentages of Intense Physical Activity in 2009 and 2019</span>
+```{r % intense phisical activity 2009}
+# TOTAL PERCENTAGE INTENSE PHYSICAL ACTIVITY IN 2009
+dataset_att_intens_year_reg %>% filter(anno == 2009) %>%
+  count(attivita_label) %>%
+  mutate(percentuale = round(100 * n / sum(n), 2))
+```
+```{r % intense phisical activity 2019}
+# TOTAL PERCENTAGE INTENSE PHYSICAL ACTIVITY IN 2019
+dataset_att_intens_year_reg %>% filter(anno == 2019) %>%
+  count(attivita_label) %>%
+  mutate(percentuale = round(100 * n / sum(n), 2))
+```
+
+The results indicate that the **change in the proportion** of individuals engaging in **intense physical activity** between **2009 and 2019** is **relatively modest**, with a **slight increase of about 3 percentage points** among those reporting participation.
+
+
+## <span style="font-size:20px;">Moderate Physical Analysis</span>
+### <span style="font-size:20px;">Regional distribution of Moderate Physical Activity</span>
+```{r stacked-barplot-moderate-2009}
+# Filter for valid physical moderate activity
+dataset_att_mod_year_reg = dataset_definitivo[!is.na(dataset_definitivo$s02_attiv_moder) &
+                                                   dataset_definitivo$s02_attiv_moder %in% c(1, 2, -99) &
+                                                   !is.na(dataset_definitivo$anno) &
+                                                   !is.na(dataset_definitivo$regione), 
+                                                 c("s02_attiv_moder", "anno", "regione")]
+
+# Add factor labels
+dataset_att_mod_year_reg$attivita_label = factor(dataset_att_mod_year_reg$s02_attiv_moder,
+                                                    levels = c(1, 2, -99),
+                                                    labels = c("Yes (Moderate Activity)", 
+                                                               "No (No Moderate Activity)", 
+                                                               "I don't know/I don't remember"))
+
+# Normalized stacked bar chart on moderate physical activity in 2009
+ggplot(subset(dataset_att_mod_year_reg, anno == 2009), 
+       aes(x = regione, fill = attivita_label)) +
+  geom_bar(position = "fill", color = "white") +
+  scale_fill_manual(values = c(
+    "Yes (Moderate Activity)" = "blue",     
+    "No (No Moderate Activity)" = "green", 
+    "I don't know/I don't remember" = "black"  )) +
+  labs(title = "Moderate physical activity by region - Year 2009",
+       x = "Region",
+       y = "Number of people",
+       fill = "Answers") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Now let's look at **2019** for a comparison:
+```{r stacked-barplot-moderate-2019}
+# Normalized stacked bar chart on moderate physical activity in 2019
+ggplot(subset(dataset_att_mod_year_reg, anno == 2019), 
+       aes(x = regione, fill = attivita_label)) +
+  geom_bar(position = "fill", color = "white") +
+  scale_fill_manual(values = c(
+    "Yes (Moderate Activity)" = "blue",     
+    "No (No Moderate Activity)" = "green", 
+    "I don't know/I don't remember" = "black"  )) +
+  labs(title = "Moderate physical activity by region - Year 2019",
+       x = "Region",
+       y = "Number of people",
+       fill = "Answers") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Unlike the previous bar charts on **intense physical activity**, which showed **relatively low engagement**, the results for **moderate activity** indicate a **higher prevalence** among individuals. This **normalized stacked bar chart** reveals that in nearly all **Italian regions**, approximately **50% of respondents** report engaging in **moderate physical activity**. Notable exceptions include **Basilicata**, **Calabria**, **Campania**, **Puglia**, and **Sicilia**, where the **proportion is significantly lower**.
+
+
+### <span style="font-size:20px;">Overall percentages of Moderate Physical Activity in 2009 and 2019</span>
+```{r % moderate phisical activity 2009}
+# TOTAL PERCENTAGE MODERATE PHYSICAL ACTIVITY IN 2009
+dataset_att_mod_year_reg %>% filter(anno == 2009) %>%
+  count(attivita_label) %>%
+  mutate(percentuale = round(100 * n / sum(n), 2))
+```
+
+```{r % moderate phisical activity 2019}
+#TOTAL PERCENTAGE MODERATE PHYSICAL ACTIVITY IN 2019
+dataset_att_mod_year_reg %>% filter(anno == 2019) %>%
+  count(attivita_label) %>%
+  mutate(percentuale = round(100 * n / sum(n), 2))
+```
+
+Among **survey respondents**, in **2009** approximately **60%** reported engaging in **moderate physical activity**, while **40%** did not. By **2019**, the proportion of individuals reporting moderate activity **decreased by 5 percentage points**, with a corresponding **5% increase** in those **not engaging** in such activity. This suggests a **slight decline** in the practice of **moderate physical activity** over the decade.
+
+
+## <span style="font-size:20px;">Boxplot of weekly minutes of Physical Activity</span>
+```{r boxplot-activity-total}
+# Calculating the total amount of minutes per week of moderate and intense physical activity
+
+# Filter valid observations (exclude -99 = "I don't know/I don't remember")
+dataset_durata_att_fis = dataset_definitivo %>%
+  filter(s02_tlib_attiv_inte_gg >= 0,
+         s02_tlib_attiv_inte_min >= 0,
+         s02_attiv_moder_gg >= 0,
+         s02_attiv_moder_min >= 0) %>%
+  mutate(
+    minuti_intensa = s02_tlib_attiv_inte_gg * s02_tlib_attiv_inte_min,
+    minuti_moderata = s02_attiv_moder_gg * s02_attiv_moder_min,
+    minuti_totali = minuti_intensa + minuti_moderata
+  )
+
+# Modify claeta3 form numeric to categorical value
+dataset_durata_att_fis = dataset_durata_att_fis %>%
+  mutate(claeta3 = factor(claeta3,
+                          levels = c(1, 2, 3),
+                          labels = c("18–34", "35–49", "50–69")))
+
+# Create the boxplot
+ggplot(dataset_durata_att_fis %>%
+         filter(!is.na(claeta3), !is.na(minuti_totali)),
+       aes(x = claeta3, y = minuti_totali)) +
+  geom_boxplot(fill = "lightblue", color = "darkblue") +
+  labs(
+    title = "Weekly minutes of physical activity by age group",
+    x = "Age class",
+    y = "Total minutes per week"
+  ) +
+  theme_minimal()
+```
+
+From this boxplot, we can draw several key conclusions about weekly physical activity across age groups:<br>
+• **Similar median activity**: The median weekly minutes of physical activity is fairly similar across all age groups (18–34, 35–49, 50–69). This suggests that, on average, people of different ages engage in a comparable amount of physical activity;<br>
+• **High variability within groups**: All groups show a wide interquartile range (IQR) and long whiskers, indicating large variability in how much people exercise, regardless of age;<br>
+• **Presence of outliers** in all groups: Every age group has several outliers, with some individuals reporting extremely high levels of weekly activity (over 2000 minutes = \~5 hours/day). This suggests that a small subset of each group exercises much more than the average;<br>
+• **50–69 slightly more active**? The box for the 50–69 group seems slightly higher and wider, which might suggest that this group has a higher and more variable activity level compared to the younger groups. However, the difference is not dramatic and would need statistical testing to confirm.<br><br>
+Overall conclusion: There is no drastic difference in average physical activity across age groups, but individual differences are significant within each group. Age alone doesn’t strongly predict how active someone is.
+
+
+## <span style="font-size:20px;">Hypertension and Medical Advice</span>
+### <span style="font-size:20px;">Have people diagnosed with hypertension received advice to practice physical activity?</span>
+```{r contingency-table hypertension}
+# Filter the responses without including NA values
+dataset_contingency = dataset_definitivo %>%
+  filter(s07_press_alta %in% c(1, 2),
+         s07_sugg_att_fis_press %in% c(1, 2)) %>%
+  mutate(
+    ipertensione = ifelse(s07_press_alta == 1, "Hypertensive", "No Hypertensive"),
+    consiglio_att_fisica = ifelse(s07_sugg_att_fis_press == 1, "Advice Received", "No Advice")
+  )
+
+# Absolute frequency table
+contingency_table = table(dataset_contingency$ipertensione, dataset_contingency$consiglio_att_fisica)
+print(contingency_table)
+```
+```{r contingengy-table hypertension 2}
+# Percentages per raw
+percentage_table <- prop.table(contingency_table, margin = 1) * 100
+print(round(percentage_table, 1))
+```
+
+Contingency table show that among individuals who were told they have high blood pressure (hypertensive):<br>
+• **1989** received advice to do physical activity (82%);<br>
+• **436** did not receive such advice (18%).
+
+
+### <span style="font-size:20px;">Hypertension distribution by Age and Gender</span>
+```{r hypertension-age-sex}
+# Histogram of Age Distribution Based on Hypertension Diagnosis
+
+# Creating a dataset of hypertension
+dataset_hypertension = dataset_definitivo[dataset_definitivo$s07_press_alta %in% c(1, 2), ]
+
+# Recode as factor with labels both s07_press_alta and claeta3
+dataset_hypertension$s07_press_alta = factor(dataset_hypertension$s07_press_alta, levels = c(1, 2), labels = c("Yes", "No"))
+dataset_hypertension$claeta3 = factor(dataset_hypertension$claeta3, 
+                                      levels = c(1, 2, 3), 
+                                      labels = c("18-34", "35–49", "50–69"))
+
+# Plot histogram
+ggplot(dataset_hypertension, aes(x = claeta3, fill = s07_press_alta)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ sesso_intervistato) +
+  labs(title = "Age Class Distribution by Hypertension Diagnosis",
+       x = "Age Class",
+       y = "Count",
+       fill = "Hypertension Diagnosis") +
+  theme_minimal()
+```
+
+This histogram represents the distribution of individuals across different age groups and genders, based on whether they have been diagnosed with **hypertension** or not. The **x-axis** shows three age groups (18–34, 35–49, and 50–69), split by gender (F for female on the left, M for male on the right), while the **y-axis** represents the number of individuals in each category. The bars are **color-coded**: **red** (coral) indicates individuals **diagnosed with hypertension**, and **blue-green** indicates those **without a diagnosis**.<br><br>
+The chart reveals several interesting patterns. First, **hypertension becomes significantly more common with age**: in both men and women, the number of diagnoses increases steeply from the 35–49 group to the 50–69 group. Notably, among males aged 50–69, the number of individuals diagnose* with hypertension is almost equal to those not diagnosed, suggesting a high prevalence in this subgroup. In contrast, the 18–34 group shows very low diagnosis rates for both genders, indicating that **hypertension is rare among younger adults**.<br>
+Another observation is that women aged 35–49 appear to be less affected than men in the same group, as reflected by a smaller proportion of red bars compared to men. However, this gender gap diminishes with age; by the 50–69 group, the prevalence of hypertension is high in both men and women, although still slightly more pronounced among men.<br><br>
+Overall, the chart underscores a clear **age-related increase in hypertension** and highlights subtle but meaningful **gender differences**, especially in middle-aged and older adults.
+
+
+### <span style="font-size:20px;">Logistic Regression Model on Hypertension</span>
+```{r glm-model hypertension}
+# GLM MODEL ON HIGH BLOOD PRESSURE OR NOT
+# Filtering data
+dataset_filtered_press <- subset(dataset_definitivo,
+                        s07_press_alta %in% c(1, 2) &  # Yes or No
+                        claeta3 %in% c(1,2,3) &              
+                          sesso_intervistato %in% c("M", "F")        
+)
+
+# Binary variable --> 1 = high pressure, 0 = low pressure
+dataset_filtered_press$s07_press_alta_bin <- ifelse(dataset_filtered_press$s07_press_alta == 1, 1, 0)
+
+# Convert in factor the gender of the respondent patient
+dataset_filtered_press$sesso_intervistato <- factor(
+  dataset_filtered_press$sesso_intervistato,
+  levels = c("F", "M"),            # F will be treated as the reference category
+  labels = c("0", "1")             # Optional: clearer labels for interpretation
+)
+
+# Model creation
+glm_model_press <- glm(
+  s07_press_alta_bin ~ claeta3 + sesso_intervistato,
+  data = dataset_filtered_press,
+  family = binomial(link = "logit")
+)
+summary(glm_model_press)
+```
+
+The log-odds of having high blood pressure for an individual in the **18–34 age group** and **female** (the reference category) is **-4.98**, which corresponds to a **very low probability** of hypertension. The coefficient for `claeta3` indicates that with each successive increase in age group, the **log-odds** of being diagnosed with hypertension **increase by approximately 1.45**. When exponentiated, this translates to an **odds ratio of about 4.26** (`e^1.45`), meaning that each older age group is associated with **over four times greater odds** of having high blood pressure. Additionally, the coefficient for `sesso_intervistato1` shows that **men** have log-odds of hypertension that are **0**.
+
+
+## <span style="font-size:20px;">Chi-squared test of Independence between Physical Activity and Salt in the Food</span>
+```{r salt in the food}
+# Filter to include only valid responses (1 = Yes, 2 = No)
+dataset_salt_activity <- dataset_definitivo[dataset_definitivo$s07_sugg_sale_press %in% c(1, 2) &
+                         dataset_definitivo$s07_sugg_att_fis_press %in% c(1, 2), ]
+
+# Contingency table
+contingency_table <- table(dataset_salt_activity$s07_sugg_sale_press, dataset_salt_activity$s07_sugg_att_fis_press)
+
+# Add readable labels to rows and columns
+colnames(contingency_table) <- c("Physical activity: Yes", "Physical activity: No")
+rownames(contingency_table) <- c("Reduce salt: Yes", "Reduce salt: No")
+
+# Print the table
+print(contingency_table)
+```
+```{r chi-square salt in the food}
+# Chi-square test of independence
+chisq.test(contingency_table)
+```
+```{r salt in the food 2}
+# Column percentages (proportions within physical activity groups)
+round(prop.table(contingency_table, margin = 2) * 100, 1)
+```
+
+The chi-squared test revealed a **strong and statistically significant association** between receiving a recommendation to engage in regular physical activity and receiving a recommendation to reduce salt intake (*χ² = 730.1*, *df = 1*, *p \< 0.001*).<br>
+The column percentages indicate that:<br>
+• **95,5%** of individuals who were advised to be physically active were **also advised to reduce salt**.<br>
+• In contrast, only **46,6%** of those who were **not advised** to be physically active received advice to reduce salt, while **53,4%** of them did not receive such advice.<br><br>
+These results suggest that **healthcare professionals often deliver lifestyle recommendations in combination**: individuals encouraged to increase physical activity are also significantly more likely to be advised to modify their diet by reducing salt intake.
+
+
+# <span style="font-size:20px;">Physical Health in relation to Mental Well-Being</span>
+In this chapter, we aim to investigate the extent to which physical health status influences mental well-being, using as "physical health" indicators a set of behaviors and demographic characteristics: the number of days per week spent in intense activity, the number of days per week spent in moderate activity, daily fruit consumption, sex and age. These independent variables will be related to two distinct indicators of "mental well-being": the number of days with low interest and the number of days with low mood over the past two weeks. Using Poisson regression models (and, where appropriate, Negative Binomial models), we will assess the partial effect of each physical factor on emotional state, while controlling for potential interactions and subgroup differences. Our objective is to identify which aspects of physical lifestyle are most strongly associated with variation in the mental health of the population under study.
+As done before, we extracted a **representative sample (60%)** from the dataset `dataset_provvisorio`, maintaining the representativeness of some categories (Year, ASL, Sex and age classes).<br>
+In this chapter we have decided to select a higher proportion that is necessary in order to have much more consistent results with the selected variables in our fitted models.
+```{r dataset definitivo 2}
+set.seed(123)
+dataset_definitivo_2 = dataset_provvisorio %>% 
+  group_by(anno, asl, sesso_intervistato, claeta3) %>%
+  slice_sample(prop = 0.6) %>%   
+  ungroup()
+```
+
+Selecting variables that are necessary for analysing the potential association between physical and mental health.
+```{r passi benessere}
+passi_benessere = dataset_definitivo_2%>%
+  dplyr::select(anno,regione,asl,sesso_intervistato,claeta3,comune_intervistato,lettera_asl,s02_tlib_attiv_inte,
+         s02_tlib_attiv_inte_gg,s02_tlib_attiv_inte_min,s02_attiv_moder,s02_attiv_moder_gg,
+         s02_attiv_moder_min,s04_consu_frutta,s12_poco_inter_gg,s12_giu_morale_gg)
+
+# Not considering the characteristics of non-respondents and changing the encoding of "" into NA
+passi_benessere[passi_benessere == -99] = NA
+passi_benessere[passi_benessere == ''] = NA
+# Change strings into uppercase
+passi_benessere$comune_intervistato = toupper(passi_benessere$comune_intervistato)
+```
+```{r modifying passi benessere}
+# Forcing R to consider the following variables as categorical ones
+passi_benessere$anno = as.factor(passi_benessere$anno)
+passi_benessere$regione = as.factor(passi_benessere$regione)
+passi_benessere$asl = as.factor(passi_benessere$asl)
+passi_benessere$sesso_intervistato = as.factor(passi_benessere$sesso_intervistato)
+passi_benessere$claeta3 = as.factor(passi_benessere$claeta3)
+passi_benessere$comune_intervistato = as.factor(passi_benessere$comune_intervistato)
+passi_benessere$lettera_asl = as.factor(passi_benessere$lettera_asl)
+passi_benessere$s02_tlib_attiv_inte = as.factor(passi_benessere$s02_tlib_attiv_inte)
+passi_benessere$s02_attiv_moder = as.factor(passi_benessere$s02_attiv_moder)
+passi_benessere$s04_consu_frutta = as.factor(passi_benessere$s04_consu_frutta)
+
+# Changing the levels of age and fruit fruit consumption to have a clearer view
+levels(passi_benessere$claeta3) = c("18-34", "35-49", "50-69")
+levels(passi_benessere$s04_consu_frutta) = c("None", "1-2", "3-4", "5+")
+
+# Overview of the specific dataset
+head(passi_benessere)
+summary(passi_benessere)
+```
+
+## <span style="font-size:20px;">Explorative analysis</span>
+**Plots of the distribution of intense and moderate activity in minutes**
+```{r distribution intense activity, echo = FALSE}
+par(mfrow = c(1,2))
+ggplot(passi_benessere %>% filter(!is.na(s02_tlib_attiv_inte_min)), 
+       aes(x = s02_tlib_attiv_inte_min, fill = sesso_intervistato)) +
+  geom_histogram(position = "identity", alpha = 0.8, binwidth = 20, color = "black",size = 0.1) +
+  labs(title = "Activity distribution by sex and year", x = "Minutes of intense activity", fill = 'Sex')+
+  facet_wrap(~ anno)+
+  theme_bw()
+```
+
+Between 2009 and 2019 the same pronounced right skew and gender gap persist: men accumulate more minutes of intense activity, while women, despite a slight increase in variability, continue to exhibit substantially lower average values and counts.<br><br>
+```{r distribution moderate activity, echo = FALSE}
+ggplot(passi_benessere %>% filter(!is.na(s02_attiv_moder_min)), 
+       aes(x = s02_attiv_moder_min, fill = sesso_intervistato)) +
+  geom_histogram(position = "identity", alpha = 0.8, binwidth = 20, color = "black",size = 0.1) +
+  labs(title = "Activity distribution by sex and year", x = "Minutes of moderate activity", fill = 'Sex')+
+  facet_wrap(~ anno)+
+  theme_bw()
+```
+
+In both 2009 and 2019 the distributions of weekly minutes of moderate activity are strongly right-skewed, with the bulk of respondents clustered below about 150 minutes and a long tail toward higher values. In each year, women outnumber men in nearly every time bin.<br><br>
+**Barplots of the selected variables**<br>
+Since the variables related to days have a limited and meaningful number of discrete values, it makes more sense to obtain a clearer representation trough barplots with a bar for each number of days.
+```{r barplots activity, echo = FALSE}
+ggplot(passi_benessere %>% filter(s02_tlib_attiv_inte_gg != 0, !is.na(s02_tlib_attiv_inte_gg)), 
+       aes(x = as.factor(s02_tlib_attiv_inte_gg), fill = sesso_intervistato)) +
+  geom_bar(position = "dodge", color = "black",size = 0.1) +
+  labs(title = "Activity distribution by sex and year", x = "Days of intense activity (out of 7 days)", fill = 'Sex')+
+  facet_wrap(~ anno)+
+  theme_bw()
+```
+
+In both 2009 and 2019 the distribution of intense‐activity days is unimodal at 2–3 days per week; most people do intense activity only a few days a week, men more so than women, with little change in the general shape in these specific years.<br><br>
+```{r barplots activity 2, echo = FALSE}
+ggplot(passi_benessere %>% filter(s02_attiv_moder_gg != 8, !is.na(s02_attiv_moder_gg)), # removing the row with 8days which is probably uncorrect data
+       aes(x = as.factor(s02_attiv_moder_gg), fill = sesso_intervistato)) +
+  geom_bar(position = "dodge", color = "black",size = 0.1) +
+  labs(title = "Activity distribution by sex and year", x = "Days of moderate activity (out of 7 days)", fill = 'Sex')+
+  facet_wrap(~ anno)+
+  theme_bw()
+```
+
+In both 2009 and 2019, moderate activity days cluster tightly in the 1–3-day range, peaking at 2 days per week, with frequencies plunging for 4–6 days and a smaller rebound at 7 days. Women outnumber men at nearly every day-count except the 1-day category.<br><br>
+```{r low-interest distribution, echo = FALSE}
+ggplot(passi_benessere %>% filter(!is.na(s12_poco_inter_gg)), 
+       aes(x = as.factor(s12_poco_inter_gg), fill = sesso_intervistato)) +
+  geom_bar(position = "dodge", color = "black",size = 0.1) +
+  labs(title = "Low-interest distribution by sex and year", x = "Days with low-interest (out of 14 days)", fill = 'Sex')+
+  facet_wrap(~ anno)+
+  theme_bw()
+```
+
+In both 2009 and 2019 the distribution of low‐interest days is extremely right‐skewed: the vast majority of people report 0 days of low interest in the past two weeks, with a sharp drop to 1–2 days and then a long, sparse tail all the way out to 14 days.<br><br>
+```{r low-mod distribution, echo = FALSE}
+ggplot(passi_benessere %>% filter(!is.na(s12_giu_morale_gg)), 
+       aes(x = as.factor(s12_giu_morale_gg), fill = sesso_intervistato)) +
+  geom_bar(position = "dodge", color = "black",size = 0.1) +
+  labs(title = "Low-mood distribution by sex and year", x = "Days with low-mood (out of 14 days)", fill = 'Sex')+
+  facet_wrap(~ anno)+
+  theme_bw()
+```
+
+As for `s12_poco_inter_gg`, also `s12_giu_morale_gg` shows a distribution where most people in both years experience no low-mood days, and the shape of the distribution remains nearly unchanged across sexes and over time.<br><br>
+The variables `s02_tlib_attiv_inte_gg`, `s02_attiv_moder_gg`, `s12_poco_inter_gg`, and `s12_giu_morale_gg` pertain to different intervals (the first two are calculated over 7 days, while the last two are calculated over 14 days), so we should normalize the data in order to have comparable graphs.
+```{r normalize of data}
+z_s02_tlib_attiv_inte_gg = scale(passi_benessere$s02_tlib_attiv_inte_gg)
+z_s02_attiv_moder_gg = scale(passi_benessere$s02_attiv_moder_gg)
+z_s12_poco_inter_gg = scale(passi_benessere$s12_poco_inter_gg)
+z_s12_giu_morale_gg = scale(passi_benessere$s12_giu_morale_gg)
+```
+
+**Histograms of the selected variables with standardized values**
+```{r histograms passi benessere, echo = FALSE}
+ggplot(passi_benessere, aes(x = z_s02_tlib_attiv_inte_gg, fill = sesso_intervistato)) +
+  geom_histogram(position = "dodge", na.rm = TRUE, bins = 20, alpha = 0.8, color = "black",size = 0.1) +
+  labs(title = "Activity distribution by sex and year", x = "Standardized days of intense activity", fill = 'Sex')+
+  facet_wrap(~ anno)+
+  theme_bw()
+
+ggplot(passi_benessere, aes(x = z_s02_attiv_moder_gg, fill = sesso_intervistato)) +
+  geom_histogram(position = "dodge", na.rm = TRUE, bins = 20, alpha = 0.8, color = "black",size = 0.1) +
+  labs(title = "Activity distribution by sex and year", x = "Standardized days of moderate activity", fill = 'Sex')+
+  facet_wrap(~ anno)+
+  theme_bw()
+
+ggplot(passi_benessere, aes(x = z_s12_poco_inter_gg, fill = sesso_intervistato)) +
+  geom_histogram(position = "dodge", na.rm = TRUE, bins = 20, alpha = 0.8, color = "black",size = 0.1) +
+  labs(title = "Activity distribution by sex and year", x = "Standardized days with low-interest", fill = 'Sex')+
+  facet_wrap(~ anno)+
+  theme_bw()
+
+ggplot(passi_benessere, aes(x = z_s12_giu_morale_gg, fill = sesso_intervistato)) +
+  geom_histogram(position = "dodge", na.rm = TRUE, bins = 20, alpha = 0.8, color = "black",size = 0.1) +
+  labs(title = "Activity distribution by sex and year", x = "Standardized days with low-mood", fill = 'Sex')+
+  facet_wrap(~ anno)+
+  theme_bw()
+```
+
+**Data frames with the proportions/morbidity rates of `s12_poco_inter_gg` and `s12_giu_morale_gg`**<br>
+1) Grouping by region
+```{r grouping by region}
+df_inter_reg = passi_benessere %>% filter(!is.na(s12_poco_inter_gg)) %>%
+  group_by(regione, s12_poco_inter_gg) %>%    
+  summarise(n = n(), .groups = "drop_last") %>%   # Counting how many people have a specific n of days with low-interest and then dropping this                                                                       number to go to the next one, remaining in the same region
+  mutate(total = sum(n), prop  = n / total) %>%   # Total for each region and proportion for each number of days with low-interest
+  dplyr::select(regione, s12_poco_inter_gg, prop)
+df_inter_reg
+
+df_morale_reg = passi_benessere %>% filter(!is.na(s12_giu_morale_gg)) %>%
+  group_by(regione, s12_giu_morale_gg) %>%    
+  summarise(n = n(), .groups = "drop_last") %>%    # Counting how many people have a specific n of days with low-mood and then dropping this number                                                                    to go to the next one, remaining in the same region
+  mutate(total = sum(n), prop  = n / total) %>%    # Total for each region and proportion for each number of days with low-mood
+  dplyr::select(regione, s12_giu_morale_gg, prop)
+df_morale_reg
+```
+
+*Graphical representation of the previous proportions zooming in the interval between 0% and 20%*
+```{r proportions zooming in the interval, echo = FALSE}
+ggplot(df_inter_reg, aes(x = factor(s12_poco_inter_gg), y = prop, group = regione, color = regione)) +
+  geom_line(size = 0.7) +
+  geom_point(size = 1) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.1)) +     # Using percentages
+  coord_cartesian(ylim = c(0, 0.2)) +                               # Useful for zooming in the interval between 0% and 20% and seeing the differences
+  labs(x = "Number of days with low-interest", y= "Proportion", color= "Regions", 
+       title = "Morbility rate of Low Interest by Region") +
+  theme_minimal() 
+```
+
+Across Italy’s regions, the proportion of people reporting low-interest days out of 14 is highly right-skewed and very consistent: 0 days dominates in every region and all regional lines lie close together with only minor differences in the exact heights of the 2-day and 7-day peaks.<br><br>
+```{r number of days with low-mood, echo = FALSE}
+ggplot(df_morale_reg, aes(x = factor(s12_giu_morale_gg), y = prop, group = regione, color = regione)) +
+  geom_line(size = 0.7) +
+  geom_point(size = 1) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.1)) +
+  coord_cartesian(ylim = c(0, 0.2))+                                            # Useful for zooming in the interval between 0% and 20% and seeing the differences
+  labs(x = "Number of days with low-mood", y= "Proportion", color= "Regions", 
+       title = "Morbility rate of Low Mood by Region") +
+  theme_minimal()
+```
+
+Overall, every region follows nearly the same pattern, indicating that most people experience no low-mood days, a small share have one or two days, and very few endure longer periods.<br><br>
+2) Grouping by age
+```{r grouping by age}
+df_inter_eta = passi_benessere %>% filter(!is.na(s12_poco_inter_gg)) %>%
+  group_by(claeta3, s12_poco_inter_gg) %>%    
+  summarise(n = n(), .groups = "drop_last") %>%   
+  mutate(total = sum(n), prop  = n / total) %>%     # Total for each level of age and proportion for each number of days with low-interest
+  dplyr::select(claeta3, s12_poco_inter_gg, prop)
+df_inter_eta
+
+df_morale_eta = passi_benessere %>% filter(!is.na(s12_giu_morale_gg)) %>%
+  group_by(claeta3, s12_giu_morale_gg) %>%    
+  summarise(n = n(), .groups = "drop_last") %>%  
+  mutate(total = sum(n), prop  = n / total) %>%     # Total for each level of age and proportion for each number of days with low-mood
+  dplyr::select(claeta3, s12_giu_morale_gg, prop)
+df_morale_eta
+```
+
+*Graphical representation of the previous proportions zooming in the interval between 0% and 20%*
+```{r proportions zooming in the interval 2, echo = FALSE}
+ggplot(df_inter_eta, aes(x = factor(s12_poco_inter_gg), y = prop, group = claeta3, color = claeta3)) +
+  geom_line(size = 0.7) +
+  geom_point(size = 1) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.1)) +     
+  coord_cartesian(ylim = c(0, 0.2)) +       
+  labs(x = "Number of days with low-interest", y= "Proportion", color= "Age groups", 
+       title = "Morbility rate of Low Interest by Age") +
+  theme_minimal() 
+```
+
+All three age groups show the same highly right-skewed pattern in days of low interest over 14 days. Differences between age groups are minimal: the youngest edge out the others at the 2-day peak, while the oldest show marginally higher proportions at the longest periods.<br><br>
+```{r number of days with low-mod 2, echo = FALSE}
+ggplot(df_morale_eta, aes(x = factor(s12_giu_morale_gg), y = prop, group = claeta3, color = claeta3)) +
+  geom_line(size = 0.7) +
+  geom_point(size = 1) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.1)) +
+  coord_cartesian(ylim = c(0, 0.2))+
+  labs(x = "Number of days with low-mood", y= "Proportion", color= "Age groups", 
+       title = "Morbility rate of Low Mood by Age") +
+  theme_minimal() 
+```
+
+As above, differences by age are minimal: the youngest group shows the tallest 2-day peak, while the oldest group edges out at the extreme 14-day mark.<br><br>
+3) Grouping by sex
+```{r grouping by sex}
+df_inter_sesso = passi_benessere %>% filter(!is.na(s12_poco_inter_gg)) %>%
+  group_by(sesso_intervistato, s12_poco_inter_gg) %>%    
+  summarise(n = n(), .groups = "drop_last") %>%      
+  mutate(total = sum(n), prop  = n / total) %>%               # Total for each sex and proportion for each number of days with low-interest
+  dplyr::select(sesso_intervistato, s12_poco_inter_gg, prop)
+df_inter_sesso
+
+df_morale_sesso = passi_benessere %>% filter(!is.na(s12_giu_morale_gg)) %>%
+  group_by(sesso_intervistato, s12_giu_morale_gg) %>%    
+  summarise(n = n(), .groups = "drop_last") %>%  
+  mutate(total = sum(n), prop  = n / total) %>%               # Total for each sex and proportion for each number of days with low-mood
+  dplyr::select(sesso_intervistato, s12_giu_morale_gg, prop)
+df_morale_sesso
+```
+
+*Graphical representation of the previous proportions zooming in the interval between 0% and 20%*
+```{r proportions zooming in the interval 3, echo = FALSE}
+ggplot(df_inter_sesso, aes(x = factor(s12_poco_inter_gg), y = prop, group = sesso_intervistato, color = sesso_intervistato)) +
+  geom_line(size = 0.7) +
+  geom_point(size = 1) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.1)) +     
+  coord_cartesian(ylim = c(0, 0.2)) +       
+  labs(x = "Number of days with low-interest", y= "Proportion", color= "Sex", 
+       title = "Morbility rate of Low Interest by Sex") +
+  theme_minimal() 
+```
+
+Throughout most of the range, women report a higher share of low-interest days than men, but the overall shape of the distribution is the same for both.<br><br>
+```{r number of days with low-mod 3, echo = FALSE}
+ggplot(df_morale_sesso, aes(x = factor(s12_giu_morale_gg), y = prop, group = sesso_intervistato, color = sesso_intervistato)) +
+  geom_line(size = 0.7) +
+  geom_point(size = 1) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.1)) +
+  coord_cartesian(ylim = c(0, 0.2))+
+  labs(x = "Number of days with low-mood", y= "Proportion", color= "Sex", 
+       title = "Morbility rate of Low Mood by Sex") +
+  theme_minimal() 
+```
+
+The gender gap remains (women report more low-mood days than men at nearly every count) but absolute proportions of low-mood days are uniformly lower than those for low interest.
+
+## <span style="font-size:20px;">Fitting Regression Models</span>
+Poisson regression is a special case of a generalized linear model (GLM) with a log link. If we let Y be the count outcome (number of days with low-interest or low-mood) and X a single predictor, the model is: log(E[Y | X]) = α + βX. 
+Equivalently, λ(X) = E[Y | X] = exp(α + βX) = exp(α) · [exp(β)]^X<br><br>
+Baseline mean: • When X = 0, λ(0) = exp(α).<br><br>
+Multiplicative effect: • A one-unit increase in X multiplies the mean by exp(β): λ(X + 1) = exp(α + β(X + 1)) = λ(X) · exp(β).<br><br>
+Sign of β:<br>
+• If β > 0, then exp(β) > 1, so the expected count increases as X increases.<br>
+• If β < 0, then 0 < exp(β) < 1, so the expected count decreases as X increases.<br>
+Thus, on the log scale the effect is additive (β units change in the log-mean per unit of X), but on the original count scale it is multiplicative (exp(β) change in the mean per unit of X).<br><br>
+Since we have log scale and categorical predictors, each coefficient associated to a non-baseline level represents
+the difference in the log-mean from the baseline and the effect is additive.<br><br>
+Our response variable is a count over a 14-day window and that period is constant for all the cases so we don’t need 
+an offset (it will be absorbed by the intercept). If instead the “exposure” (i.e. the length of the time interval 
+over which we measure the count) varies across units, we need to specify 'offset'.<br><br>
+*Let's see graphically if there is an association between the 'Days with low-interest' and the categorical predictors*
+```{r days with lo-interest, echo = FALSE}
+ggplot(passi_benessere %>% filter(anno %in% c(2009, 2019)), aes(x = s04_consu_frutta, y = s12_poco_inter_gg))+
+  geom_boxplot(na.rm = TRUE) +
+  scale_x_discrete(na.translate = FALSE) +
+  labs(title = "Box plot by year", x = 'Daily portions of fruit consumption', y = 'Days with low-interest')+
+  facet_wrap(~ anno)+
+  theme_bw()
+
+ggplot(passi_benessere %>% filter(anno %in% c(2009, 2019)), aes(x = claeta3, y = s12_poco_inter_gg))+
+  geom_boxplot(na.rm = TRUE) +
+  scale_x_discrete(na.translate = FALSE) +
+  labs(title = "Box plot by year", x = 'Age', y = 'Days with low-interest')+
+  facet_wrap(~ anno)+
+  theme_bw()
+
+ggplot(passi_benessere %>% filter(anno %in% c(2009, 2019)), aes(x = sesso_intervistato, y = s12_poco_inter_gg))+
+  geom_boxplot(na.rm = TRUE) +
+  scale_x_discrete(na.translate = FALSE) +
+  labs(title = "Box plot by year", x = 'Sex', y = 'Days with low-interest')+
+  facet_wrap(~ anno)+
+  theme_bw()
+```
+
+All three panels show that most people report zero low-interest days, with medians at or very near 0 and long tails of outliers stretching up toward 14 days. Overall, low-interest days fall for everyone from 2009 to 2019, and groups with healthier habits (eat more fruit), older age and men tend to report slightly fewer days of low interest.<br><br>
+**Regression models with `s12_poco_inter_gg` as dependent variable**
+```{r regression model low interest}
+m0_inter = glm(s12_poco_inter_gg ~ s02_tlib_attiv_inte_gg + s04_consu_frutta + claeta3 + sesso_intervistato,   
+         family = poisson(link ="log"), data = passi_benessere%>% filter(if_all(everything(), ~ !is.na(.)))) # Taking only the rows for which all columns are non-NA using an anonymous function ~, so that the models have equal sample size and can be compared with anova 
+summary(m0_inter)                                                                                                
+
+m1_inter = glm(s12_poco_inter_gg ~ s02_tlib_attiv_inte_gg + s02_attiv_moder_gg + s04_consu_frutta + claeta3 + sesso_intervistato,
+         family = poisson(link = "log"), data = passi_benessere%>% filter(if_all(everything(), ~ !is.na(.))))
+summary(m1_inter)
+```
+
+Baseline: a female 18–34 year‐old with 0 days of moderate or intense activity and without daily fruit consumption. Intense activity and fruit consumption show statistically significant reductions in low‐interest days. Moderate activity has only a weak, not strongly significant positive effect here, but i will keep it since AIC decreases a little. Older age and male sex are both protective.<br><br>
+**Checking for correlation between numerical predictors**
+```{r correlation between numerical predictors}
+cor.test(passi_benessere$s02_tlib_attiv_inte_gg, passi_benessere$s02_attiv_moder_gg, 
+         use = "complete.obs", method = "pearson") # Or method = "Spearman"
+```
+
+There is a modest positive relationship (0.24) between the number of days of intense activity (`s02_tlib_attiv_inte_gg`) and the number of days of moderate activity (`s02_attiv_moder_gg`). There is a correlation, but it isn't very strong. With p-value < 2.2e-16, the null hypothesis (correlation = 0) is rejected with strong evidence, so the correlation is statistically significant and we are 95% confidence that the true correlation falls in the range between 0.21 and 0.26. ρ of Spearman could also be used in order to investigate the monotonous association between ranks and guarantee robustness because it is not affected by extreme outliers. But in thi case the ruslts are quite similar (ρ = 0.22), so I will keep the raw correlation.
+```{r regression model low interest 2}
+m1_inter_cor = glm(s12_poco_inter_gg ~ s02_tlib_attiv_inte_gg*s02_attiv_moder_gg + s04_consu_frutta + claeta3 + sesso_intervistato,
+            family = poisson(link="log"), data = passi_benessere%>% filter(if_all(everything(), ~ !is.na(.))))
+summary(m1_inter_cor)
+
+anova(m0_inter, m1_inter, m1_inter_cor, test= 'LRT')
+```
+
+The interaction of the numerical predictors significantly improves the model’s fit and should be considered: it suggests that the association between `s02_attiv_moder_gg` and `s12_poco_inter_gg` varies depending on `s02_tlib_attiv_inte_gg`.<br><br>
+*Let's see graphically if there is an association between the 's12_giu_morale_gg' and the categorical predictors*
+```{r boxplot days with low-mood, echo = FALSE}
+ggplot(passi_benessere %>% filter(anno %in% c(2009, 2019)), aes(x = s04_consu_frutta, y = s12_giu_morale_gg))+
+  geom_boxplot(na.rm = TRUE) +
+  scale_x_discrete(na.translate = FALSE) +
+  labs(title = "Box plot by year", x = 'Daily portions of fruit consumption', y = 'Days with low-mood')+
+  facet_wrap(~ anno)+
+  theme_bw()
+
+ggplot(passi_benessere %>% filter(anno %in% c(2009, 2019)), aes(x = claeta3, y = s12_giu_morale_gg))+
+  geom_boxplot(na.rm = TRUE) +
+  scale_x_discrete(na.translate = FALSE) +
+  labs(title = "Box plot by year", x = 'Age', y = 'Days with low-mood')+
+  facet_wrap(~ anno)+
+  theme_bw()
+
+ggplot(passi_benessere %>% filter(anno %in% c(2009, 2019)), aes(x = sesso_intervistato, y = s12_giu_morale_gg))+
+  geom_boxplot(na.rm = TRUE) +
+  scale_x_discrete(na.translate = FALSE) +
+  labs(title = "Box plot by year", x = 'Sex', y = 'Days with low-mood')+
+  facet_wrap(~ anno)+
+  theme_bw()
+```
+
+Overall, although in 2009 and 2019 lower fruit consumption was associated with more low-mood days, the distribution of `s12_giu_morale_gg` had compressed to zero for virtually everyone, eliminating those group disparities.<br><br>
+**Fitting models with `s12_giu_morale_gg` as response variable**
+```{r models with s12_giu_morale_gg}
+m2_morale = glm(s12_giu_morale_gg ~  s02_tlib_attiv_inte_gg + s04_consu_frutta + claeta3 + sesso_intervistato,
+         family = poisson(link="log"), data = passi_benessere%>% filter(if_all(everything(), ~ !is.na(.)))) # Taking only the rows for which all columns are non-NA, so that the models have equal sample sizes and can be compared with anova
+summary(m2_morale) 
+
+m3_morale = glm(s12_giu_morale_gg ~ s02_attiv_moder_gg + s04_consu_frutta + claeta3 + sesso_intervistato,
+         family = poisson(link="log"), data = passi_benessere%>% filter(if_all(everything(), ~ !is.na(.))))
+summary(m3_morale)
+
+m4_morale = glm(s12_giu_morale_gg ~ s04_consu_frutta + claeta3 + sesso_intervistato,
+         family = poisson(link="log"), data = passi_benessere%>% filter(if_all(everything(), ~ !is.na(.))))
+summary(m4_morale)
+```
+
+The partial effect of `s02_tlib_attiv_inte_gg` is not statistically significant because p-value = 0.12. Also the partial effect of `s02_attiv_moder_gg` is not statistically significant because p-value = 0.12. Thus, I will take the simpler model with categorical predictors with significant  partial effects on the dependent variable.<br><br>
+**Checking for dispersion only for the best two models**
+```{r checking for dispersion}
+dispersiontest(m1_inter_cor, trafo=1,alternative = "two.sided")
+dispersiontest(m4_morale, trafo=1,alternative = "two.sided")
+```
+
+Poisson distribution has identical mean and variance, but in this case both the models have over-dispersion because alpha > 1 (dispersion parameter) with strong statistical evidence (p-value < 2.2e-16). There is evident overdispersion in the Poisson model: the residuals vary much more than the model expects. The Negative Binomial Model corrects this issue by introducing the θ parameter and produces more realistic standard errors.<br><br>
+**Fitting negative-binomial regression models**
+```{r negative binomial low-interest}
+m1_inter_cor_nb = glm.nb(s12_poco_inter_gg ~ s02_tlib_attiv_inte_gg*s02_attiv_moder_gg + s04_consu_frutta + claeta3 + sesso_intervistato,
+                   link="log", data = passi_benessere%>% filter(if_all(everything(), ~ !is.na(.))))
+summary(m1_inter_cor_nb)
+
+m4_morale_nb = glm.nb(s12_giu_morale_gg ~ s04_consu_frutta + claeta3 + sesso_intervistato,
+               link="log", data = passi_benessere%>% filter(if_all(everything(), ~ !is.na(.))))
+summary(m4_morale_nb)
+```
+
+The summary shows coefficient for each predictor and the estimated dispersion parameter Theta: the larger θ, the less overdispersion because the estimate alpha = 1/θ. `s04_consu_frutta`,`claeta3` and `sesso_intervistato` remain statistically significant, whil `s02_tlib_attiv_inte_gg` and `s02_attiv_moder_gg` no longer influence the count of the response variable.<br>
+The "apparent" AIC is not directly comparable (different scales) with Poisson model, but the drastic reduction in overdispersion makes the Negative Binomial Model more appropriate for inference and confidence intervals.<br><br>
+**Performing Likelihood Ratio Test to see whether the NB model is significantly better than the Poisson**
+```{r likelihood ratio test models}
+lrtest(m1_inter_cor, m1_inter_cor_nb)
+```
+
+Log‐Likelihood increase, chi-square statistic is huge (8687.8) and the p‐value is really close to zero, so we can conclude that the dispersion parameter in Negative Binomial Model significantly improves fit.
+```{r likelihood ratio test models 2}
+lrtest(m4_morale, m4_morale_nb)
+```
+
+Log‐Likelihood increases, chi-square statistic is huge (7094.3) and the p-value < 2.2e-16: we reject the null hypothesis (alpha=0) because the Poisson assumption VAR(Y)=E(Y) is violated and the extra parameter alpha improves the fit.<br>
+For GLM models, in diagnostic plots it’s better to use Pearson residuals rather than raw residuals because they represent the number of standard deviations the observed value is away from the fitted one.<br><br>
+*Graphical representations to check the distribution of the residuals*
+```{r graphical representations distirbution of residuals, echo = FALSE}
+passi_benessere_clean = passi_benessere%>% filter(if_all(everything(), ~ !is.na(.)))
+
+ggplot(passi_benessere_clean, aes(x = predict(m1_inter_cor_nb, type = "response"), y = residuals(m1_inter_cor_nb, type = 'pearson'))) +
+  geom_point(alpha = 0.3) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = 'red', size = 1) +
+  labs(x = "Fitted values", y = "Pearson residuals",
+       title = "Fitted values vs Residuals of Days with low-interest") +
+  theme_minimal()
+
+ggplot(passi_benessere_clean, aes(x = predict(m4_morale_nb, type = "response"), y = residuals(m4_morale_nb, type = 'pearson'))) +
+  geom_point(alpha = 0.3) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = 'red', size = 1) +
+  labs(x = "Fitted values", y = "Pearson residuals",
+    title = "Fitted values vs Residuals of Days with low-mood") +
+  theme_minimal()
+```
+
+The plots confirm a bit of heteroscedasticity because there is a pattern and points are not randomly spread: residual variability decreases as the fitted values increase. They highlight some cases with very large residuals (greater than 8/9) to consider carefully. But in a count model it’s quite normal to have wider residuals where the fitted values are lower or higher because variance increases with the mean.
+
+
+# <span style="font-size:20px;">Conclusions</span>
+In conclusion, this analysis has highlighted highly significant insights: the models reveal robust and statistical significant results and clear practical interpretations. These findings underscore the crucial importance of prevention in the medical field: promoting an active lifestyle, a balanced diet, and ongoing monitoring of cardiovascular and chronic risk factors is not only a strategy to reduce disease onset but also a direct investment in people's psycho-physical quality of life.<br>
+Only through targeted preventive interventions and a multidimensional approach to health care we truly enhance collective well-being, reduce disease morbidity rate, and strengthen both individual and social resilience.<br><br><br>
+**© 2025 Giacomo Angeletti, Edoardo Crapanzano, Vlad Adrian Dumitru, Francesco Zago. All rights reserved.**
